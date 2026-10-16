@@ -15,7 +15,10 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: that floating label moves to Ubuntu 26 on 19 October 2026.
+    # A runner image changing underneath you turns an unrelated failure into a mystery, so
+    # bump this deliberately after watching a run on the new image.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
