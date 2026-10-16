@@ -4,7 +4,7 @@ export default function Home() {
       <h1 style={{ color: "#1F3A5F", marginBottom: 4 }}>Crew Check</h1>
       <p style={{ color: "#6B7280", marginTop: 0 }}>Proof of concept: does this quote need a second tech under OSHA?</p>
       <div style={{ background: "#fff", border: "1px solid #E3E8EF", borderRadius: 8, padding: 16 }}>
-        <p style={{ margin: 0 }}>Setup check: GitHub and Vercel are connected. The checker comes next.</p>
+        <p style={{ margin: 0 }}>Version 2: passcode is on. If you can read this, you got past the lock. The checker comes next.</p>
       </div>
     </main>
   );
