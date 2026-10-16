@@ -28,6 +28,8 @@ RAG = **R**etrieve (find the right rule cards) + **A**ugment (add them to the pr
 | `lib/retrieve.js` | **Retrieve.** `findCards`: filter to federal + the store's state, score cards by whole-word keyword hits, return the top 3. `stateStatus`: no plan / plan state / not given. |
 | `lib/skill.js` | **The instructions** (skill v6.7). Always sent in full, so the 5 federal rules are never missed even if the search misses. Generated from `data/SKILL-v6.7.md`. |
 | `app/api/check/route.js` | **Augment + Generate.** Safety checks, calls retrieve, builds the system message (skill + `<retrieved_cards>`) and the user message (quote + state), calls Claude, returns answer + cards + usage. The API key is only read here, on the server. |
+| `lib/db.js` | Connects to the Neon database (`DATABASE_URL`, added by Vercel → Storage). Removes dollar amounts before anything is stored. |
+| `app/api/admin/route.js` | Created the tables and loaded the cards and 9,490 stripped past quotes. **Locked** after loading (`ADMIN_HASH = ""`). |
 | `lib/model.js` | Reads `CLAUDE_MODEL`; only accepts `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5`. |
 | `app/page.js` | The screen (runs in the browser). Sends the quote to `/api/check`, shows the answer and the cards used. |
 | `app/api/health/route.js` | One tiny Claude call to prove the key and model work. |
@@ -44,12 +46,29 @@ RAG = **R**etrieve (find the right rule cards) + **A**ugment (add them to the pr
 
 After changing any setting: Deployments → **top row** → Redeploy. Never redeploy an older row (it puts old code live).
 
-## Known limits (v1)
+## How the full version searches (v2)
 
-- Search matches words, not meaning: "torch" finds welding only because both words are listed on the card. Upgrade: embeddings.
-- No state rule cards yet: plan states get "check state rules before citing".
-- No saved logs: every answer disappears after you read it. Upgrade: database (Supabase).
-- The skill was scored 16/16 on Opus in testing; smaller models must pass the same test before use.
+1. **In the browser:** the page turns the quote into a meaning vector with a free open model (all-MiniLM-L6-v2, 384 numbers). The first check downloads it (about 25 MB).
+2. **On the server:** cards are found two ways and merged: keywords (`lib/retrieve.js`) and meaning (Neon, pgvector, filtered to federal + the store's state). Up to 4 cards.
+3. **Similar past jobs:** the 3 closest of 9,490 past Tech 2 quotes (prices and names removed). Context only, never a reason. Shown on screen only when `SITE_PASSCODE` is on.
+4. **State line:** decided by code from the state list, never by the model.
+5. **Log:** every check is saved in the `checks` table (dollar amounts removed).
+
+Data: `cards` (16: 10 federal, 6 California), `past_quotes` (9,490), `checks` (log). California is **partial**: confined spaces, high voltage, welding (fire watch details are in NFPA 51B, not verified), roofing, ladders.
+
+## Test results (Oct 16, 2026, Haiku)
+
+| Test | Result |
+|---|---|
+| Search: right card in the results | 11/11 (100%) |
+| Search: card from the wrong state | 0 |
+| Answers: 16 cases | 15/16, 0 false "OSHA requires" |
+
+## Known limits
+
+- Only California has state cards, and only for some topics. Every other plan state says "check state rules before citing".
+- The fire watch duration for California is in NFPA 51B (not public text) and is not verified.
+- When both a safety reason and a two-hands step apply, the skill does not say which headline wins (test case 3).
 
 ## Learn it by changing it (do these in order)
 
