@@ -12,6 +12,10 @@ async function embedQuote(text) {
   if (!embedderPromise) {
     embedderPromise = import(/* webpackIgnore: true */ "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6")
       .then(({ pipeline }) => pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", { dtype: "q8" }));
+    // Forget a failed download so the next Check tries again. Without this the rejected promise
+    // stays cached, every later Check waits on the same old failure, and meaning search is dead
+    // for the rest of the visit even after the connection comes back.
+    embedderPromise.catch(() => { embedderPromise = null; });
   }
   const fe = await embedderPromise;
   const out = await fe(text.slice(0, 2000), { pooling: "mean", normalize: true });
@@ -76,8 +80,10 @@ export default function Home() {
           <div style={box}>
             <div style={{ fontSize: 12, color: C.grey, marginBottom: 8 }}>Cards used (what the search found)</div>
             {res.cards.length === 0 && <div style={{ color: C.grey }}>No rule card matched this quote.</div>}
-            {res.cards.map((c) => (
-              <div key={c.citation} style={{ padding: "6px 0", borderTop: `1px solid ${C.line}` }}>
+            {/* keyed by position as well as citation: a federal and a state card can carry the
+                same citation, and React drops a row when two keys match */}
+            {res.cards.map((c, i) => (
+              <div key={`${c.citation}-${i}`} style={{ padding: "6px 0", borderTop: `1px solid ${C.line}` }}>
                 <b>{c.title}</b> <span style={{ color: C.red, fontFamily: "monospace" }}>{c.citation}</span>
                 <div style={{ fontSize: 12, color: C.grey }}>
                   {c.layer} · {c.state}
