@@ -69,6 +69,12 @@ export async function POST(req) {
   if (status.group === "plan" && status.library === "none") stateNote = "This state's own rule cards are not loaded yet, so use the 'has its own OSHA plan' State line.";
   if (status.group === "plan" && status.library === "partial") stateNote = `Some of ${state}'s own rules are loaded as cards (state="${state}"). In a state-plan state the state's rules are what is enforced: when a ${state} card covers the topic, cite that card's rule in the paragraph instead of the federal one, and keep the 'has its own OSHA plan' State line because not every topic is loaded.`;
 
+  // The State line is decided by code, not by the model: it is a lookup, and lookups should never be guessed.
+  const stateName = state || "";
+  const stateLine = !state ? "State: not given. Add the store's state to check state rules."
+    : status.group === "plan" ? `State: ${stateName} has its own OSHA plan. Check state rules before citing.`
+    : `State: ${stateName} follows federal OSHA. Nothing changes.`;
+
   const system = SKILL + `
 
 <retrieved_cards>
@@ -80,7 +86,7 @@ ${cardsBlock}
 The 3 most similar past invoiced quotes that billed a second tech (prices and names removed). Context only, like the history table: never a reason by itself, never OSHA. You may mention them briefly ("similar past jobs used X hours").
 ${similarBlock}
 </similar_past_jobs>`;
-  const user = `Check the second tech on this quote.\nStore state: ${state || "not given"}. ${stateNote}\n\n<quote>\n${quote}\n</quote>`;
+  const user = `Check the second tech on this quote.\nStore state: ${state || "not given"}. ${stateNote}\nUse exactly this State line: "${stateLine}"\nLine 1 must be one of the 6 headlines from output_format, copied word for word (fill in only the bracketed part).\n\n<quote>\n${quote}\n</quote>`;
 
   // ---------- G: GENERATE ----------
   let data;
@@ -95,7 +101,18 @@ ${similarBlock}
   } catch (e) {
     return Response.json({ ok: false, problem: "network", detail: String(e).slice(0, 200) }, { status: 502 });
   }
-  const answer = (data.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n").trim();
+  let answer = (data.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n").trim();
+  // Enforce the State line even if the model reworded it.
+  if (answer && !/^State: one person/i.test(answer)) {
+    const lines = answer.split("\n");
+    const i = lines.findIndex((l) => l.trim().startsWith("State:"));
+    if (i >= 0) lines[i] = stateLine;
+    else if (!/one person on site/i.test(lines[0] || "")) {
+      const j = lines.findIndex((l) => l.trim().startsWith("OSHA:"));
+      lines.splice(j >= 0 ? j + 1 : lines.length, 0, stateLine);
+    }
+    answer = lines.join("\n");
+  }
   if (!answer) return Response.json({ ok: false, model, problem: "empty_answer", detail: `stop_reason: ${data.stop_reason}. The model ran out of room before answering.`, usage: data.usage }, { status: 502 });
 
   const cardsOut = found.map((f) => ({ citation: f.card.citation, title: f.card.title, layer: f.card.layer, state: f.card.state, matched: f.matched, similarity: f.similarity }));
