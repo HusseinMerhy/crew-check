@@ -4,3 +4,4 @@ node_modules
 .vercel
 tests/inputs.md
 tests/result-*.json
+evals/result-*.json
