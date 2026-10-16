@@ -6,11 +6,27 @@ import { SKILL } from "../../../lib/skill";
 import { findCards, stateStatus } from "../../../lib/retrieve";
 import { getModel } from "../../../lib/model";
 import { getSql, toVec, isVector, stripMoney } from "../../../lib/db";
+import { callClaude, textOf } from "../../../lib/anthropic";
 import { CARDS } from "../../../data/cards";
 export const dynamic = "force-dynamic";
 
 const MAX_QUOTE = 8000;
 const MAX_CARDS = 4;
+// Room for the answer. Raised once already because the model ran out mid-answer and returned nothing.
+const MAX_ANSWER_TOKENS = 4000;
+// A card found only by meaning has to clear this score to be sent to the model. A weak meaning
+// match is a wrong citation waiting to happen, so the floor is deliberately not low.
+const MIN_CARD_SIMILARITY = 0.25;
+// Past jobs clear no floor at all, unlike cards above. They are labelled context-only in the
+// prompt, so a weak match is noise rather than a wrong citation, which is why this was left as it
+// is. Adding a floor here is worth doing once a test exists that can show what it does to the
+// answers: right now nothing would catch a change for the worse.
+const PAST_JOBS_LIMIT = 3;
+const SEMANTIC_CARD_LIMIT = 4;
+
+// Look-ups by id, built once at module load. The semantic query returns ids and used to rescan
+// the whole library for each row.
+const CARD_BY_ID = new Map(CARDS.map((c) => [c.id, c]));
 
 export async function POST(req) {
   const key = process.env.ANTHROPIC_API_KEY;
@@ -37,17 +53,17 @@ export async function POST(req) {
       const v = toVec(body.vector);
       const sem = await sql.query(
         `select id, 1 - (embedding <=> $1::vector) as similarity from cards
-         where state = 'FED' or state = $2 order by embedding <=> $1::vector limit 4`, [v, state]);
+         where state = 'FED' or state = $2 order by embedding <=> $1::vector limit ${SEMANTIC_CARD_LIMIT}`, [v, state]);
       for (const r of sem) {
-        const card = CARDS.find((c) => c.id === r.id);
+        const card = CARD_BY_ID.get(r.id);
         if (!card) continue;
         const ex = picked.get(r.id);
         if (ex) ex.similarity = Number(r.similarity);
-        else if (Number(r.similarity) >= 0.25) picked.set(r.id, { card, matched: [], similarity: Number(r.similarity) });
+        else if (Number(r.similarity) >= MIN_CARD_SIMILARITY) picked.set(r.id, { card, matched: [], similarity: Number(r.similarity) });
       }
       similar = await sql.query(
         `select job, category, tech_reported, steps, tech1_h, tech2_h, reason_found, 1 - (embedding <=> $1::vector) as similarity
-         from past_quotes order by embedding <=> $1::vector limit 3`, [v]);
+         from past_quotes order by embedding <=> $1::vector limit ${PAST_JOBS_LIMIT}`, [v]);
       searchMode = "keywords + meaning";
     } catch (e) {
       searchMode = "keywords only (database error)";
@@ -83,31 +99,29 @@ ${cardsBlock}
 </retrieved_cards>
 
 <similar_past_jobs>
-The 3 most similar past invoiced quotes that billed a second tech (prices and names removed). Context only, like the history table: never a reason by itself, never OSHA. You may mention them briefly ("similar past jobs used X hours").
+The ${PAST_JOBS_LIMIT} most similar past invoiced quotes that billed a second tech (prices and names removed). Context only, like the history table: never a reason by itself, never OSHA. You may mention them briefly ("similar past jobs used X hours").
 ${similarBlock}
 </similar_past_jobs>`;
   const user = `Check the second tech on this quote.\nStore state: ${state || "not given"}. ${stateNote}\nUse exactly this State line: "${stateLine}"\nLine 1 must be one of the 6 headlines from output_format, copied word for word (fill in only the bracketed part).\n\n<quote>\n${quote}\n</quote>`;
 
   // ---------- G: GENERATE ----------
-  let data;
-  try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model, max_tokens: 4000, system, messages: [{ role: "user", content: user }] }),
-    });
-    data = await r.json();
-    if (!r.ok) return Response.json({ ok: false, model, status: r.status, problem: data?.error?.type, detail: data?.error?.message }, { status: 502 });
-  } catch (e) {
-    return Response.json({ ok: false, problem: "network", detail: String(e).slice(0, 200) }, { status: 502 });
-  }
-  let answer = (data.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n").trim();
-  // Enforce the State line even if the model reworded it.
-  if (answer && !/^State: one person/i.test(answer)) {
+  const call = await callClaude({ key, model, system, user, maxTokens: MAX_ANSWER_TOKENS });
+  if (!call.ok) return Response.json({ ok: false, model, status: call.status, problem: call.problem, detail: call.detail }, { status: 502 });
+  const data = call.data;
+  let answer = textOf(data);
+
+  // Enforce the State line even if the model reworded it, except for the lone-worker answer,
+  // which carries no State line at all.
+  // The old guard was `!/^State: one person/i.test(answer)`, which asked whether the whole answer
+  // begins with "State: one person". It never does: the lone-worker headline is line 1 and does
+  // not start with "State:". So the guard never fired, and a lone-worker answer that did contain a
+  // State line had it overwritten. Test the headline, which is what the intent always was.
+  const isLoneWorker = /one person on site/i.test(answer.split("\n")[0] || "");
+  if (answer && !isLoneWorker) {
     const lines = answer.split("\n");
     const i = lines.findIndex((l) => l.trim().startsWith("State:"));
     if (i >= 0) lines[i] = stateLine;
-    else if (!/one person on site/i.test(lines[0] || "")) {
+    else {
       const j = lines.findIndex((l) => l.trim().startsWith("OSHA:"));
       lines.splice(j >= 0 ? j + 1 : lines.length, 0, stateLine);
     }
