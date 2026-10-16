@@ -72,12 +72,58 @@ export const CARDS = [
     keywords: ["general duty", "hazard", "unsafe", "safety"],
     source: "osha.gov", checked: "2026-10-15",
   },
+  // ---------------- California (Cal/OSHA, Title 8). Checked on dir.ca.gov 2026-10-16. ----------------
+  // In California, Cal/OSHA enforces Title 8. Where a CA card covers a topic, it is the rule to cite for a CA store.
+  {
+    id: "ca-5157-d6", state: "CA", layer: "OSHA", citation: "Cal. Code Regs. tit. 8, §5157(d)(6)",
+    title: "California: attendant for a permit-required confined space (general industry)",
+    text: "For general industry work in California (not construction or the other operations listed in §5156(b)(2)), the employer must provide at least one attendant outside a permit-required confined space for the duration of entry operations. A permit space is a confined space with a hazard such as a hazardous atmosphere or engulfment material. A non-permit confined space (no hazard) needs no attendant. Same structure as federal 1910.146.",
+    keywords: ["confined space", "vault", "manhole", "pit", "tank", "lift station", "went down into", "entered", "enter", "crawl space", "sewer"],
+    source: "dir.ca.gov/title8/5157.html, 5156.html", checked: "2026-10-16",
+  },
+  {
+    id: "ca-5158-e1d", state: "CA", layer: "OSHA", citation: "Cal. Code Regs. tit. 8, §5158(e)(1)(D)",
+    title: "California: standby person for confined spaces in construction",
+    text: "For construction operations in California (and the other operations listed in §5156(b)(2)), when an atmosphere free of dangerous air contamination or oxygen deficiency or enrichment cannot be ensured by the pre-entry measures, or in an emergency: at least one employee must stand by outside the confined space ready to assist, and at least one additional employee (who may have other duties) must be within sight or call of the standby employee. If testing shows no hazard, this standby requirement does not apply.",
+    keywords: ["confined space", "vault", "manhole", "pit", "tank", "renovation", "construction", "remodel", "went down into", "entered", "enter"],
+    source: "Cornell LII copy of 8 CCR 5158; scope from dir.ca.gov/title8/5156.html", checked: "2026-10-16",
+  },
+  {
+    id: "ca-2940-cd", state: "CA", layer: "OSHA", citation: "Cal. Code Regs. tit. 8, §2940(c) and (d)",
+    title: "California: no working alone on energized high voltage (over 600 V)",
+    text: "California's High-Voltage Electrical Safety Orders: only qualified electrical workers may work on energized conductors or equipment connected to high-voltage systems (high voltage = more than 600 volts, §2700), and no such employee may be assigned to work alone, except for replacing fuses, operating switches or other work not requiring contact with energized high-voltage parts, clearing trouble, or emergencies. During work on exposed energized high-voltage parts, a qualified worker or trainee must be in close proximity as an observer. Unlike federal 1910.269, this is not limited to utility work in its wording; verify that the specific store equipment falls under the High-Voltage Electrical Safety Orders before citing.",
+    keywords: ["600", "volt", "volts", "high voltage", "transformer", "switchgear", "energized", "primary", "480", "4160", "utility"],
+    source: "dir.ca.gov/title8/2940.html, 2700.html", checked: "2026-10-16",
+  },
+  {
+    id: "ca-4848-hotwork", state: "CA", layer: "OSHA", citation: "Cal. Code Regs. tit. 8, §4848",
+    title: "California: fire prevention procedure for welding and cutting",
+    text: "California requires the employer to establish a fire prevention and suppression procedure for welding, cutting and similar operations, and incorporates NFPA 51B-2009 Chapters 3 to 7 and ANSI Z49.1 by reference. The fire watch triggers and how long the watch must stay are in NFPA 51B, which is not reproduced here: say a fire watch is likely required under §4848 / NFPA 51B and to verify the exact NFPA 51B fire watch terms before citing a duration for a California store.",
+    keywords: ["weld", "welding", "torch", "torched", "cut", "cutting", "braze", "brazing", "hot work", "sparks", "cardboard", "combustible", "flammable"],
+    source: "dir.ca.gov/title8/4848.html", checked: "2026-10-16",
+  },
+  {
+    id: "ca-1730-roof", state: "CA", layer: "NOT_OSHA", citation: "Cal. Code Regs. tit. 8, §1730; §1724",
+    title: "California roofing: fall protection above 20 ft, no safety monitor provision found",
+    text: "California construction roofing rules (§1730) require protection from falls for low-slope roof work more than 20 feet high (warning lines, personal fall protection, railings and similar). Sections 1730 and 1724 contain no safety monitor or safety monitoring system provision and no 50 ft roof width rule. Do not cite the federal safety monitor rule (1926.502(h)) as the California requirement.",
+    keywords: ["roof", "roofing", "safety monitor", "edge", "flat roof", "low-slope"],
+    source: "dir.ca.gov/Title8/1730.html, 1724.html", checked: "2026-10-16",
+  },
+  {
+    id: "ca-3276-ladder", state: "CA", layer: "SAFETY", citation: "Cal. Code Regs. tit. 8, §3276(e)(14), (e)(9)",
+    title: "California: ladders in passageways and doorways",
+    text: "Ladders must not be placed in passageways, doorways, driveways or any location where they may be displaced unless protected by barricades or guards (§3276(e)(14)). A ladder must be placed to prevent slipping, or be tied, blocked, held or otherwise secured (§3276(e)(9)): holding is one option, so no person is required to hold it. A second person guarding the ladder is a safety reason, not a two-person requirement.",
+    keywords: ["ladder", "aisle", "doorway", "driveway", "passageway", "sales floor", "store open", "customers", "traffic"],
+    source: "dir.ca.gov/dosh/etools/08-001/regs.htm", checked: "2026-10-16",
+  },
 ];
 
 // States with their own OSHA plan covering private employers (osha.gov, checked 2026-10-15).
-// complete: true only once that state's rule cards are loaded and verified.
+// Library status per plan state: "none" (no cards yet), "partial" (some topics verified), "complete" (all topics verified).
 export const PLAN_STATES = {
-  AK: false, AZ: false, CA: false, HI: false, IN: false, IA: false, KY: false, MD: false,
-  MI: false, MN: false, NV: false, NM: false, NC: false, OR: false, SC: false, TN: false,
-  UT: false, VT: false, VA: false, WA: false, WY: false, PR: false,
+  AK: "none", AZ: "none", CA: "partial", HI: "none", IN: "none", IA: "none", KY: "none", MD: "none",
+  MI: "none", MN: "none", NV: "none", NM: "none", NC: "none", OR: "none", SC: "none", TN: "none",
+  UT: "none", VT: "none", VA: "none", WA: "none", WY: "none", PR: "none",
 };
+// California "partial": confined spaces, high voltage, welding (fire watch details in NFPA 51B not verified), roofing, ladders.
+// Not yet researched for CA: welding inside a confined space attendant, lifting, harness rescue.

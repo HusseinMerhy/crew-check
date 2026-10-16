@@ -5,19 +5,38 @@ const STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID"
 const C = { navy: "#1F3A5F", grey: "#6B7280", line: "#E3E8EF", red: "#C0392B" };
 const box = { background: "#fff", border: `1px solid ${C.line}`, borderRadius: 8, padding: 16, marginTop: 14 };
 
+// Meaning search, step 1: turn the quote into a meaning vector IN THE BROWSER, with the same free model
+// used to place the cards and past quotes (all-MiniLM-L6-v2, 384 numbers). First use downloads it (~25 MB).
+let embedderPromise = null;
+async function embedQuote(text) {
+  if (!embedderPromise) {
+    embedderPromise = import(/* webpackIgnore: true */ "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6")
+      .then(({ pipeline }) => pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", { dtype: "q8" }));
+  }
+  const fe = await embedderPromise;
+  const out = await fe(text.slice(0, 2000), { pooling: "mean", normalize: true });
+  return Array.from(out.data);
+}
+
 export default function Home() {
   const [quote, setQuote] = useState("");
   const [state, setState] = useState("");
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState(null);
 
+  const [stage, setStage] = useState("");
+
   async function check() {
     setBusy(true); setRes(null);
+    let vector = null;
+    try { setStage("Reading the quote's meaning (first time loads a small model)..."); vector = await embedQuote(quote); }
+    catch (e) { vector = null; }
+    setStage("Checking the rules...");
     try {
-      const r = await fetch("/api/check", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quote, state }) });
+      const r = await fetch("/api/check", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quote, state, vector }) });
       setRes(await r.json());
     } catch (e) { setRes({ ok: false, problem: "network" }); }
-    setBusy(false);
+    setBusy(false); setStage("");
   }
 
   return (
@@ -41,6 +60,7 @@ export default function Home() {
             {busy ? "Checking..." : "Check"}
           </button>
         </div>
+        {busy && <div style={{ fontSize: 12, color: C.grey, marginTop: 8 }}>{stage}</div>}
       </div>
 
       {res && !res.ok && (
@@ -59,12 +79,31 @@ export default function Home() {
             {res.cards.map((c) => (
               <div key={c.citation} style={{ padding: "6px 0", borderTop: `1px solid ${C.line}` }}>
                 <b>{c.title}</b> <span style={{ color: C.red, fontFamily: "monospace" }}>{c.citation}</span>
-                <div style={{ fontSize: 12, color: C.grey }}>{c.layer} · {c.state} · matched: {c.matched.join(", ")}</div>
+                <div style={{ fontSize: 12, color: C.grey }}>
+                  {c.layer} · {c.state}
+                  {c.matched.length > 0 && <> · words: {c.matched.join(", ")}</>}
+                  {c.similarity != null && <> · meaning match: {c.similarity.toFixed(2)}</>}
+                </div>
               </div>
             ))}
           </div>
+          {res.similar && res.similar.length > 0 && (
+            <div style={box}>
+              <div style={{ fontSize: 12, color: C.grey, marginBottom: 8 }}>Similar past jobs (context only, prices and names removed)</div>
+              {res.similar.map((s, i) => (
+                <div key={i} style={{ padding: "6px 0", borderTop: `1px solid ${C.line}` }}>
+                  <b>{s.job || s.category}</b> <span style={{ color: C.grey, fontSize: 12 }}>Tech 1 {s.tech1_h ?? "?"} h · Tech 2 {s.tech2_h ?? "?"} h · meaning match {s.similarity.toFixed(2)}</span>
+                  <div style={{ fontSize: 13 }}>{s.tech_reported}</div>
+                  <div style={{ fontSize: 12, color: C.grey }}>Reason written: {s.reason_found}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {res.similar_hidden && (
+            <div style={{ ...box, color: C.grey, fontSize: 13 }}>Similar past jobs were used but are hidden: turn the passcode on (SITE_PASSCODE) to show them.</div>
+          )}
           <div style={{ fontSize: 12, color: C.grey, marginTop: 8 }}>
-            Model: {res.model} · tokens in {res.usage?.input_tokens ?? "?"}, out {res.usage?.output_tokens ?? "?"}
+            Search: {res.search} · {res.logged ? "saved to log" : "not logged"} · Model: {res.model} · tokens in {res.usage?.input_tokens ?? "?"}, out {res.usage?.output_tokens ?? "?"}
           </div>
         </>
       )}
