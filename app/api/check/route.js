@@ -39,13 +39,15 @@ ${cardsBlock}
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model, max_tokens: 900, system, messages: [{ role: "user", content: user }] }),
+      body: JSON.stringify({ model, max_tokens: 4000, system, messages: [{ role: "user", content: user }] }),
     });
     const data = await r.json();
     if (!r.ok) return Response.json({ ok: false, model, status: r.status, problem: data?.error?.type, detail: data?.error?.message }, { status: 502 });
     const answer = (data.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n").trim();
+    // If the model used its whole budget thinking, there is no answer: say so instead of returning blank.
+    if (!answer) return Response.json({ ok: false, model, problem: "empty_answer", detail: `stop_reason: ${data.stop_reason}. The model ran out of room before answering.`, usage: data.usage }, { status: 502 });
     return Response.json({
-      ok: true, model, answer,
+      ok: true, model, answer, stop_reason: data.stop_reason,
       cards: found.map((f) => ({ citation: f.card.citation, title: f.card.title, layer: f.card.layer, state: f.card.state, matched: f.hits })),
       state: { code: state || null, ...status },
       usage: data.usage,
