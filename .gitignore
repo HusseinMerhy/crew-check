@@ -2,3 +2,5 @@ node_modules
 .next
 .env*
 .vercel
+tests/inputs.md
+tests/result-*.json
