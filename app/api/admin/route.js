@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { getSql, toVec, isVector } from "../../../lib/db";
 export const dynamic = "force-dynamic";
 
-const ADMIN_HASH = "aa2bc9237621126ec98c5822f9305a4e951af9dbd794f4a3c47750e70f662486";
+const ADMIN_HASH = ""; // loading finished 2026-10-16: route locked. Put a new fingerprint here only to reload.
 
 const SETUP = [
   `create extension if not exists vector`,
