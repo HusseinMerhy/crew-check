@@ -5,6 +5,10 @@
 //   node evals/run_eval.js https://crew-check-five.vercel.app
 //   node evals/run_eval.js https://crew-check-five.vercel.app --holdout
 //
+// Dry paths that send no request and spend no credit:
+//   node evals/run_eval.js --help
+//   node evals/run_eval.js --self-check     offline assertions on the scorers
+//
 // Environment:
 //   CREW_CHECK_PASSCODE   the site passcode, if the middleware gate is on
 //   NODE_USE_ENV_PROXY=1  node's built in fetch ignores HTTPS_PROXY without this
@@ -21,12 +25,31 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { MENTION_RULES, namesDiscrepancy } from "./mention-rules.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
 
 // ---------------------------------------------------------------- arguments
 const argv = process.argv.slice(2);
+const HELP = argv.includes("--help") || argv.includes("-h");
+const SELF_CHECK = argv.includes("--self-check");
+if (HELP) {
+  console.log([
+    "node evals/run_eval.js [BASE] [--holdout]",
+    "",
+    "  BASE           site to test, default https://crew-check-five.vercel.app",
+    "  --holdout      run holdout.jsonl instead of cases.jsonl",
+    "  --self-check   offline assertions on the State line and discrepancy",
+    "                 scorers. Sends no request and spends no API credit.",
+    "  --help         this text",
+    "",
+    "A full run posts one request per case to BASE/api/check and spends real",
+    "API credit on the owner's key. Set CREW_CHECK_PASSCODE if the site is",
+    "locked. See CLAUDE.md for the pass/flag mapping and the discrepancy layer.",
+  ].join("\n"));
+  process.exit(0);
+}
 const HOLDOUT = argv.includes("--holdout");
 const firstPositional = argv.find((a) => !a.startsWith("--"));
 const BASE = (firstPositional || "https://crew-check-five.vercel.app").replace(/\/+$/, "");
@@ -115,8 +138,35 @@ function classifyCitation(key) {
 }
 
 // -------------------------------------------- plan states, read from the data
-const planBlock = CARDS_SRC.match(/export\s+const\s+PLAN_STATES\s*=\s*\{([\s\S]*?)\n\}/);
-const PLAN = new Set(planBlock ? [...planBlock[1].matchAll(/\b([A-Z]{2})\s*:/g)].map((m) => m[1]) : []);
+// PLAN_STATES has two shapes in the wild and this runner has to work on both,
+// because PR #5 is in flight and the harness must run on current main as well
+// as on PR #5's branch. A harness that breaks depending on merge order is worse
+// than the bug it fixes.
+//
+//   current main:   AK: "none"
+//                   a bare string. It is the card library status, and it says
+//                   nothing about which standards the state enforces.
+//   after PR #5:    AK: { standards: "federal", library: "none" }
+//
+// The map value is the `standards` string when the object shape gives one, and
+// null when it does not. null means "no standards information", which selects
+// the legacy fallback in expectedStateForm.
+function parsePlanStates(src) {
+  const plan = new Map();
+  const block = src.match(/export\s+const\s+PLAN_STATES\s*=\s*\{([\s\S]*?)\n\}/);
+  if (!block) return plan;
+  for (const m of block[1].matchAll(/\b([A-Z]{2})\s*:\s*(\{[^{}]*\}|"[^"]*"|'[^']*')/g)) {
+    const [, st, raw] = m;
+    if (raw.startsWith("{")) {
+      const got = raw.match(/\bstandards\s*:\s*["']([^"']+)["']/);
+      plan.set(st, got ? got[1].toLowerCase() : null);
+    } else {
+      plan.set(st, null); // old string shape, carries no standards information
+    }
+  }
+  return plan;
+}
+const PLAN = parsePlanStates(CARDS_SRC);
 
 // ------------------------------------------------------- answer field readers
 // headType and oshaField are from tests/run.mjs.
@@ -153,13 +203,68 @@ function twoPersonField(ans) {
   if (/No/i.test(f)) return "no";
   return "missing";
 }
-// adapted from stateOk in tests/run.mjs
-function stateLineOk(ans, st) {
+// ------------------------------------------------------------- State line
+// Adapted from stateOk in tests/run.mjs, which tested /own OSHA plan/i for any
+// plan state. That is not good enough any more. There are four permitted State
+// lines and two of them contain that same substring:
+//
+//   not given      "State: not given. Add the store's state to check state rules."
+//   federal only   "State: XX follows federal OSHA. Nothing changes."
+//   plan, federal  "State: XX runs its own OSHA plan but enforces the federal standards."
+//   plan, own      "State: XX has its own OSHA rules. Check them before citing."
+//
+// The "plan, federal" line is what PR #5 introduces for the 19 state-plan
+// states that adopt the federal standards, and it CONTAINS "own OSHA plan". So
+// the old check would have passed PR #5 without testing the one thing PR #5
+// changes. Each form is matched distinctly instead.
+//
+// Order matters below: plan_federal is tested before legacy_plan, because the
+// legacy pattern is a substring of the plan_federal sentence.
+const STATE_LINE_FORMS = {
+  not_given: /\bnot given\b/i,
+  plan_federal: /\bruns its own OSHA plan\b[\s\S]{0,80}?\benforces the federal standards\b/i,
+  plan_own: /\bhas its own OSHA rules\b/i,
+  legacy_plan: /\bown OSHA plan\b/i,
+  federal: /\bfollows federal OSHA\b/i,
+};
+const STATE_FORM_ORDER = ["not_given", "plan_federal", "plan_own", "legacy_plan", "federal"];
+
+function stateLineForm(line) {
+  for (const name of STATE_FORM_ORDER) if (STATE_LINE_FORMS[name].test(line)) return name;
+  return "unknown";
+}
+
+// Which form this state should produce.
+//
+// The "legacy_plan" branch is a FALLBACK and it exists only because PR #5 is
+// unmerged. On current main the PLAN_STATES value is a bare string, so there is
+// no `standards` field to read and no way to know which of the two plan lines a
+// state should produce. Rather than guess, fall back to the old, loose
+// expectation (/own OSHA plan/i, which accepts the legacy line and the
+// plan_federal line alike). It cannot tell those two apart, which is exactly
+// the bug this function fixes elsewhere.
+//
+// DELETE the legacy_plan branch, and the `null` case in parsePlanStates, once
+// PR #5 has merged and every PLAN_STATES entry carries `standards`.
+function expectedStateForm(st, plan = PLAN) {
+  if (!st) return "not_given";
+  if (!plan.has(st)) return "federal";
+  const standards = plan.get(st);
+  if (standards === null) return "legacy_plan";
+  // "federal" means the state runs a plan but enforces the federal standards.
+  // "own" and "mixed" (and any later value that is not "federal") mean the
+  // state has rules of its own, so the stronger line is the one required.
+  return standards === "federal" ? "plan_federal" : "plan_own";
+}
+
+function stateLineOk(ans, st, plan = PLAN) {
   const line = ans.split("\n").find((l) => l.trim().startsWith("State:")) || "";
   if (!line) return false;
-  if (!st) return /not given/i.test(line);
-  if (PLAN.has(st)) return /own OSHA plan/i.test(line);
-  return /follows federal/i.test(line);
+  const want = expectedStateForm(st, plan);
+  const got = stateLineForm(line);
+  // Reproduces the old loose behaviour, and only on the fallback path.
+  if (want === "legacy_plan") return got === "legacy_plan" || got === "plan_federal";
+  return got === want;
 }
 // Tech 2 hours as billed in the quote, e.g. "Tech 2 - 3 hrs"
 function tech2Hours(quote) {
@@ -186,6 +291,90 @@ function stateOf(quote) {
   return m ? m[1].toUpperCase() : "";
 }
 
+// ---------------------------------------------------------- offline self check
+// Proves the State line scorer tells the four forms apart under both
+// PLAN_STATES shapes, and that no discrepancy rule fires on a headline-only
+// answer. No request is sent and no API credit is spent.
+if (SELF_CHECK) {
+  const fails = [];
+  let asserted = 0;
+  const ok = (name, cond) => { asserted += 1; if (!cond) fails.push(name); };
+
+  const OLD_SRC = 'export const PLAN_STATES = {\n  AK: "none", CA: "partial",\n}';
+  const NEW_SRC = 'export const PLAN_STATES = {\n  AK: { standards: "federal", library: "none" },\n' +
+                  '  CA: { standards: "mixed", library: "partial" }, OR: { standards: "own", library: "none" },\n}';
+  const OLD = parsePlanStates(OLD_SRC);
+  const NEW = parsePlanStates(NEW_SRC);
+
+  ok("old shape: states parsed", OLD.has("AK") && OLD.has("CA") && OLD.size === 2);
+  ok("old shape: no standards information", OLD.get("AK") === null && OLD.get("CA") === null);
+  ok("new shape: states parsed", NEW.has("AK") && NEW.has("CA") && NEW.has("OR"));
+  ok("new shape: standards read", NEW.get("AK") === "federal" && NEW.get("CA") === "mixed" && NEW.get("OR") === "own");
+  ok("real cards.js parses to a non empty map", PLAN.size > 0);
+
+  const LINES = {
+    not_given: "State: not given. Add the store's state to check state rules.",
+    federal: "State: Texas follows federal OSHA. Nothing changes.",
+    plan_federal: "State: Alaska runs its own OSHA plan but enforces the federal standards.",
+    plan_own: "State: California has its own OSHA rules. Check them before citing.",
+    legacy_plan: "State: Oregon has its own OSHA plan. Check state rules before citing.",
+  };
+  for (const [name, line] of Object.entries(LINES)) {
+    ok(`form ${name} classifies as itself`, stateLineForm(line) === name);
+  }
+  // The bug this fixes: the plan_federal sentence must not read as the legacy line.
+  ok("plan_federal is not read as legacy_plan", stateLineForm(LINES.plan_federal) !== "legacy_plan");
+  ok("legacy_plan is not read as plan_federal", stateLineForm(LINES.legacy_plan) !== "plan_federal");
+
+  const body = (line) => `Some headline.\n\nA paragraph.\n\nOSHA: No | Safety: No | Two-person step: No\n${line}`;
+  // old shape: the loose fallback, accepts legacy and plan_federal, not plan_own
+  ok("old shape AK accepts legacy line", stateLineOk(body(LINES.legacy_plan), "AK", OLD));
+  ok("old shape AK accepts plan_federal line", stateLineOk(body(LINES.plan_federal), "AK", OLD));
+  ok("old shape AK rejects plan_own line", !stateLineOk(body(LINES.plan_own), "AK", OLD));
+  ok("old shape AK rejects federal line", !stateLineOk(body(LINES.federal), "AK", OLD));
+  // new shape: standards "federal" wants plan_federal and nothing else
+  ok("new shape AK accepts plan_federal line", stateLineOk(body(LINES.plan_federal), "AK", NEW));
+  ok("new shape AK rejects legacy line", !stateLineOk(body(LINES.legacy_plan), "AK", NEW));
+  ok("new shape AK rejects plan_own line", !stateLineOk(body(LINES.plan_own), "AK", NEW));
+  // new shape: standards "mixed" or "own" wants plan_own and nothing else
+  ok("new shape CA accepts plan_own line", stateLineOk(body(LINES.plan_own), "CA", NEW));
+  ok("new shape CA rejects plan_federal line", !stateLineOk(body(LINES.plan_federal), "CA", NEW));
+  ok("new shape CA rejects legacy line", !stateLineOk(body(LINES.legacy_plan), "CA", NEW));
+  ok("new shape OR accepts plan_own line", stateLineOk(body(LINES.plan_own), "OR", NEW));
+  // a non plan state, and no state at all
+  ok("non plan state accepts federal line", stateLineOk(body(LINES.federal), "TX", NEW));
+  ok("non plan state rejects plan_federal line", !stateLineOk(body(LINES.plan_federal), "TX", NEW));
+  ok("no state accepts not given line", stateLineOk(body(LINES.not_given), "", NEW));
+  ok("no state rejects federal line", !stateLineOk(body(LINES.federal), "", NEW));
+  ok("missing State line fails", !stateLineOk("Some headline.\n\nA paragraph.", "TX", NEW));
+
+  // Every rule must be callable, and none may fire on a headline plus the two
+  // fixed lines. A rule that passes on the headline alone is circular: see the
+  // caveat at the top of mention-rules.js.
+  const HEADLINES = [
+    "OSHA requires the second tech here.",
+    "A second tech makes sense here for safety.",
+    "The second tech is justified: this job needs two pairs of hands.",
+    "This quote doesn't show a reason for a second tech.",
+  ];
+  for (const [id, rule] of Object.entries(MENTION_RULES)) {
+    ok(`${id} has a what`, typeof rule.what === "string" && rule.what.length > 0);
+    for (const h of HEADLINES) {
+      const bare = `${h}\n\nOSHA: No | Safety: No | Two-person step: No\n${LINES.federal}`;
+      let fired;
+      try { fired = namesDiscrepancy(rule, bare); } catch (e) { fails.push(`${id} threw: ${e.message}`); break; }
+      ok(`${id} does not fire on a headline only answer`, fired === false);
+    }
+  }
+
+  console.log(`SELF CHECK: ${fails.length ? "FAIL" : "pass"}  (${asserted} assertions, ${fails.length} failed)`);
+  for (const f of fails) console.log(`  FAIL  ${f}`);
+  console.log(`State plan states parsed from data/cards.js: ${PLAN.size}`);
+  console.log(`Standards values present: ${[...new Set([...PLAN.values()])].map((v) => v === null ? "none (old string shape)" : v).join(", ")}`);
+  console.log(`Discrepancy scored case ids: ${Object.keys(MENTION_RULES).join(", ")}`);
+  process.exit(fails.length ? 1 : 0);
+}
+
 // ---------------------------------------------------------------------- load
 if (!fs.existsSync(CASES_FILE)) {
   console.error(`No case file at ${CASES_FILE}`);
@@ -208,7 +397,10 @@ let model = "", tokensIn = 0, tokensOut = 0;
 
 for (const c of cases) {
   const state = stateOf(c.quote_text);
-  const row = { id: c.id, state, expected: c.expected_verdict, expected_issue_type: c.expected_issue_type };
+  const row = {
+    id: c.id, state, expected: c.expected_verdict, expected_issue_type: c.expected_issue_type,
+    scored_by: MENTION_RULES[c.id] ? "discrepancy" : "verdict",
+  };
   let d;
   try {
     const r = await fetch(`${BASE}/api/check`, {
@@ -258,12 +450,25 @@ for (const c of cases) {
   const denied = cites.filter((x) => x.denied);
 
   const why = [];
-  if (verdict !== c.expected_verdict) why.push(`verdict ${verdict}, expected ${c.expected_verdict}`);
+  // A case listed in MENTION_RULES tests whether the bot NOTICES an
+  // inconsistency. The pass/flag mapping cannot express that, so it is scored on
+  // whether the answer names the discrepancy instead. Every check below this
+  // still applies to it. See mention-rules.js.
+  const rule = MENTION_RULES[c.id];
+  if (rule) {
+    if (!namesDiscrepancy(rule, ans)) why.push(`did not name: ${rule.what}`);
+  } else if (verdict !== c.expected_verdict) {
+    why.push(`verdict ${verdict}, expected ${c.expected_verdict}`);
+  }
   for (const x of out) why.push(`citation not in corpus: ${x.raw}`);
   for (const x of denied) why.push(`deny list citation: ${x.raw}`);
   if (/\$\s?\d/.test(ans)) why.push("dollar amount in answer");
   if (/\u2014/.test(ans)) why.push("em dash in answer");
-  if (head !== "alone" && !stateLineOk(ans, state)) why.push("State line wrong or missing");
+  const stateLine = ans.split("\n").find((l) => l.trim().startsWith("State:")) || "";
+  const stateOk = stateLineOk(ans, state);
+  if (head !== "alone" && !stateOk) {
+    why.push(`State line wrong or missing (wanted ${expectedStateForm(state)}, read ${stateLine ? stateLineForm(stateLine) : "no State line"})`);
+  }
 
   const ok = why.length === 0;
   const wantCite = (c.expected_citation || "").replace(/\s*\[UNVERIFIED\]\s*$/i, "").trim();
@@ -271,7 +476,8 @@ for (const c of cases) {
 
   rows.push({
     ...row, result: ok ? "PASS" : "FAIL", why, predicted: verdict, mapping_reason: mapWhy,
-    head, osha, safety, two_person: twoP, tech2_hours: t2, state_line_ok: stateLineOk(ans, state),
+    head, osha, safety, two_person: twoP, tech2_hours: t2, state_line_ok: stateOk,
+    state_line_want: expectedStateForm(state), state_line_form: stateLine ? stateLineForm(stateLine) : null,
     expected_citation: c.expected_citation || null, expected_citation_seen: citeSeen,
     citations: cites, out_of_corpus: out.map((x) => x.raw), deeper_than_corpus: deeper.map((x) => x.raw),
     deny_hits: denied.map((x) => x.raw), search: d.search, headline: first, answer: ans,
@@ -279,7 +485,7 @@ for (const c of cases) {
 
   console.log(
     `${c.id.padEnd(16)} ${ok ? "PASS" : "FAIL"}  ` +
-    `exp=${String(c.expected_verdict).padEnd(4)} got=${verdict.padEnd(4)} | ` +
+    `${rule ? "by=named " : "by=verdict"} exp=${String(c.expected_verdict).padEnd(4)} got=${verdict.padEnd(4)} | ` +
     `head=${head.padEnd(8)} OSHA=${osha.padEnd(7)} Safety=${safety.padEnd(7)} 2p=${twoP.padEnd(7)} T2h=${t2 ?? "-"}` +
     (why.length ? `\n${" ".repeat(18)}${why.join("; ")}` : "")
   );
@@ -291,8 +497,19 @@ const errors = rows.filter((r) => r.result === "ERROR");
 const passed = scored.filter((r) => r.result === "PASS").length;
 const score = rows.length ? (passed / rows.length) * 100 : 0; // errors count against the score
 
-const fps = scored.filter((r) => r.expected === "pass" && r.predicted === "flag");
-const fns = scored.filter((r) => r.expected === "flag" && r.predicted === "pass");
+// The two groups are reported separately as well as together. One number that
+// mixes "did it reach the right verdict" with "did it notice the arithmetic"
+// hides which of the two moved.
+const byVerdict = rows.filter((r) => r.scored_by === "verdict");
+const byMention = rows.filter((r) => r.scored_by === "discrepancy");
+const verdictPassed = byVerdict.filter((r) => r.result === "PASS").length;
+const mentionPassed = byMention.filter((r) => r.result === "PASS").length;
+
+// False positives and negatives are a property of the pass/flag mapping, so the
+// discrepancy scored cases are out of scope here: their mapped verdict is not
+// what decided them.
+const fps = scored.filter((r) => r.scored_by === "verdict" && r.expected === "pass" && r.predicted === "flag");
+const fns = scored.filter((r) => r.scored_by === "verdict" && r.expected === "flag" && r.predicted === "pass");
 
 const cleanAll = rows.filter((r) => /(^|-)clean-/.test(r.id) || r.id.startsWith("clean-"));
 const cleanScored = cleanAll.filter((r) => r.result !== "ERROR");
@@ -308,12 +525,19 @@ line("\n" + "=".repeat(79));
 line(`SCORE: ${passed}/${rows.length} = ${score.toFixed(1)}%   (errors count as failures: ${errors.length} error${errors.length === 1 ? "" : "s"})`);
 line("=".repeat(79));
 
-line(`\nFALSE POSITIVES (expected pass, predicted flag): ${fps.length}`);
+line(`\nBY SCORER`);
+line(`  verdict scored      ${verdictPassed}/${byVerdict.length}   pass/flag mapping against expected_verdict`);
+line(`  discrepancy scored  ${mentionPassed}/${byMention.length}   answer names the inconsistency (see evals/mention-rules.js)`);
+const mentionFailed = byMention.filter((r) => r.result !== "PASS");
+for (const r of mentionFailed) line(`    ${r.id.padEnd(16)} ${r.why.join("; ")}`);
+if (!mentionFailed.length && byMention.length) line("    all discrepancy scored cases named their inconsistency");
+
+line(`\nFALSE POSITIVES (expected pass, predicted flag, verdict scored cases only): ${fps.length}`);
 for (const r of fps) line(`  ${r.id}  head=${r.head} OSHA=${r.osha} Safety=${r.safety}  -> ${r.mapping_reason.join("; ")}`);
 line(`\nFalse positive rate on the clean-quote subset: ${cleanFp.length}/${cleanScored.length} = ${cleanFpRate.toFixed(1)}%  (target at most 10%)`);
 for (const r of cleanFp) line(`  ${r.id}  ${r.mapping_reason.join("; ")}`);
 
-line(`\nFALSE NEGATIVES (expected flag, predicted pass): ${fns.length}`);
+line(`\nFALSE NEGATIVES (expected flag, predicted pass, verdict scored cases only): ${fns.length}`);
 for (const r of fns) line(`  ${r.id}  head=${r.head} OSHA=${r.osha} Safety=${r.safety}  issue=${r.expected_issue_type}`);
 
 line(`\nCITATIONS NOT IN THE INDEXED CORPUS: ${allOut.length}  (target 0, this is the criterion that matters most)`);
@@ -355,6 +579,10 @@ fs.writeFileSync(outPath, JSON.stringify({
   base: BASE, set: SET, model: model || null, retrieval: "keyword-only", vector_sent: false,
   ran_at: new Date().toISOString(),
   score, passed, total: rows.length, errors: errors.length,
+  by_scorer: {
+    verdict: { passed: verdictPassed, total: byVerdict.length },
+    discrepancy: { passed: mentionPassed, total: byMention.length, ids: Object.keys(MENTION_RULES) },
+  },
   false_positives: fps.map((r) => r.id), false_negatives: fns.map((r) => r.id),
   clean_subset: { total: cleanScored.length, false_positives: cleanFp.map((r) => r.id), rate: cleanFpRate },
   out_of_corpus: allOut, deny_hits: allDeny, deeper_than_corpus: allDeeper,
