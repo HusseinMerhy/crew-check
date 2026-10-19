@@ -120,10 +120,47 @@ export const CARDS = [
 
 // States with their own OSHA plan covering private employers (osha.gov, checked 2026-10-15).
 // Library status per plan state: "none" (no cards yet), "partial" (some topics verified), "complete" (all topics verified).
+//
+// standards: what the state actually enforces
+//   "federal" - adopts the federal standards by reference
+//   "own"     - wrote its own rules for the topics we cover
+//   "mixed"   - adopts federal broadly but replaced at least one of our five
+// library: how many of ITS OWN rules we have written as cards
+// snapshot: informational only, the date its adoption is frozen at where one was
+//   found. Deliberately not surfaced in the answer: our five rules are long
+//   standing, so a 2017 snapshot is very likely the same text. Recorded so that
+//   assumption can be checked later rather than quietly forgotten.
+// UNVERIFIED: every "standards" value below comes from secondary sources
+// (Justia, Cornell LII, compliance vendors, Federal Register notices), because
+// osha.gov and ecfr.gov were unreachable. Confirm against each state's own
+// current code before trusting this.
 export const PLAN_STATES = {
-  AK: "none", AZ: "none", CA: "partial", HI: "none", IN: "none", IA: "none", KY: "none", MD: "none",
-  MI: "none", MN: "none", NV: "none", NM: "none", NC: "none", OR: "none", SC: "none", TN: "none",
-  UT: "none", VT: "none", VA: "none", WA: "none", WY: "none", PR: "none",
+  AK: { standards: "federal", library: "none" },
+  AZ: { standards: "federal", library: "none", snapshot: "2020-07-14" },
+  CA: { standards: "own",     library: "partial" },
+  HI: { standards: "federal", library: "none", snapshot: "2017-07-01" },
+  // IC 22-8-1.1-16.2 gives IOSHA 60 days to adopt a new federal standard, so a very
+  // recent federal change may not be enforceable in Indiana yet. Our five are old.
+  IN: { standards: "federal", library: "none" },
+  IA: { standards: "federal", library: "none" },
+  KY: { standards: "federal", library: "none" },
+  MD: { standards: "federal", library: "none" }, // Known to carry some unique standards; the survey could not identify which.
+  MI: { standards: "federal", library: "none", snapshot: "2011-12-27" },
+  MN: { standards: "federal", library: "none", snapshot: "1978" },
+  NV: { standards: "federal", library: "none" },
+  NM: { standards: "federal", library: "none", snapshot: "1995-07-01" },
+  NC: { standards: "federal", library: "none", snapshot: "2022-06-01" },
+  // OAR 437-002-0146 repealed and replaced 1910.146 (confined spaces). The other four
+  // of our topics follow federal, which is why this is "mixed" and not "own".
+  OR: { standards: "mixed",   library: "none" },
+  SC: { standards: "federal", library: "none" },
+  TN: { standards: "federal", library: "none" },
+  UT: { standards: "federal", library: "none", snapshot: "2024-07-01" },
+  VT: { standards: "federal", library: "none" },
+  VA: { standards: "federal", library: "none" }, // Also known to have unique standards the survey could not identify.
+  WA: { standards: "own",     library: "none" },
+  WY: { standards: "federal", library: "none" },
+  PR: { standards: "federal", library: "none" },
 };
-// California "partial": confined spaces, high voltage, welding (fire watch details in NFPA 51B not verified), roofing, ladders.
+// California library "partial": confined spaces, high voltage, welding (fire watch details in NFPA 51B not verified), roofing, ladders.
 // Not yet researched for CA: welding inside a confined space attendant, lifting, harness rescue.

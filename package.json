@@ -2,10 +2,15 @@
   "name": "crew-check",
   "private": true,
   "version": "0.1.0",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test": "node tests/run.mjs",
+    "build:skill": "node scripts/build-skill.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "1.2.0",

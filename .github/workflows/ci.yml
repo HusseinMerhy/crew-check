@@ -1,0 +1,38 @@
+# Proves the app still compiles on every push to main and every pull request.
+#
+# The 16-case suite (tests/run.mjs) is deliberately NOT run here. It calls the live site rather
+# than a build of this commit, every case spends real API credit, and the quotes it reads live in
+# tests/inputs.md, which is gitignored because they are real customer text. A runner checking out
+# this repository has no copy of them. So `next build` is what CI can honestly check: that the
+# code compiles and every route and the middleware bundle. Answer quality is still checked by hand
+# with `npm test` against a deployment.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    # Pinned, not ubuntu-latest: that floating label moves to Ubuntu 26 on 19 October 2026.
+    # A runner image changing underneath you turns an unrelated failure into a mystery, so
+    # bump this deliberately after watching a run on the new image.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # lib/skill.js is data/SKILL-v6.7.md inlined as one escaped string. An edit to the .md that
+      # was never regenerated silently ships the old prompt, and nothing else in CI would notice.
+      - run: node scripts/build-skill.mjs --check
+      - run: npm run build
+        env:
+          # Dummy values. Nothing is read at build time today (every route is force-dynamic), so
+          # the build passes without them. They are set anyway so that a future build-time read
+          # fails on a real problem rather than on a missing variable. No real key goes in here.
+          ANTHROPIC_API_KEY: dummy-key-for-build
+          CLAUDE_MODEL: claude-haiku-5-5
