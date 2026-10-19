@@ -26,6 +26,9 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # lib/skill.js is data/SKILL-v6.7.md inlined as one escaped string. An edit to the .md that
+      # was never regenerated silently ships the old prompt, and nothing else in CI would notice.
+      - run: node scripts/build-skill.mjs --check
       - run: npm run build
         env:
           # Dummy values. Nothing is read at build time today (every route is force-dynamic), so

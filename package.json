@@ -9,7 +9,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node tests/run.mjs"
+    "test": "node tests/run.mjs",
+    "build:skill": "node scripts/build-skill.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "1.2.0",

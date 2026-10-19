@@ -81,15 +81,32 @@ export async function POST(req) {
   const similarBlock = similar.length
     ? similar.map((s, i) => `<past_job n="${i + 1}" job="${s.job}" tech1_hours="${s.tech1_h ?? "?"}" tech2_hours="${s.tech2_h ?? "?"}" reason_written="${(s.reason_found || "").slice(0, 200)}">${String(s.tech_reported || "").slice(0, 300)} | Steps: ${String(s.steps || "").slice(0, 500)}</past_job>`).join("\n")
     : "(none)";
+  // Three notes, one per State line form a plan state can be given. "mixed" is deliberately
+  // handled exactly like "own": stateStatus does not know the topic, so it cannot tell whether a
+  // given Oregon quote is the one case where the federal rule was repealed and replaced. Being
+  // cautious on every Oregon quote is the only safe default.
+  // The quoted line names below track output_format in the skill, so they move with it.
   let stateNote = "";
-  if (status.group === "plan" && status.library === "none") stateNote = "This state's own rule cards are not loaded yet, so use the 'has its own OSHA plan' State line.";
-  if (status.group === "plan" && status.library === "partial") stateNote = `Some of ${state}'s own rules are loaded as cards (state="${state}"). In a state-plan state the state's rules are what is enforced: when a ${state} card covers the topic, cite that card's rule in the paragraph instead of the federal one, and keep the 'has its own OSHA plan' State line because not every topic is loaded.`;
+  if (status.group === "plan" && status.standards === "federal") stateNote = `${state} runs its own OSHA plan but enforces the federal standards by reference, so a retrieved federal card is the rule ${state} enforces: cite it directly rather than hedging that the state may require something different.`;
+  if (status.group === "plan" && status.standards !== "federal" && status.library === "none") stateNote = "This state's own rule cards are not loaded yet, so use the 'has its own OSHA rules' State line.";
+  if (status.group === "plan" && status.standards !== "federal" && status.library === "partial") stateNote = `Some of ${state}'s own rules are loaded as cards (state="${state}"). In a state-plan state the state's rules are what is enforced: when a ${state} card covers the topic, cite that card's rule in the paragraph instead of the federal one, and keep the 'has its own OSHA rules' State line because not every topic is loaded.`;
 
   // The State line is decided by code, not by the model: it is a lookup, and lookups should never be guessed.
+  // Four forms now, because a plan state that adopts the federal standards by reference is not an
+  // unknown: it enforces the rule we just cited. The old single plan-state line implied we did not
+  // know what the state required, for 19 states where we do.
+  // The federal-enforcing form stops at what the state enforces and deliberately does NOT go on to
+  // say "so the rule above applies": the answer may have cited no rule at all, and a State line must
+  // never imply one exists.
   const stateName = state || "";
-  const stateLine = !state ? "State: not given. Add the store's state to check state rules."
-    : status.group === "plan" ? `State: ${stateName} has its own OSHA plan. Check state rules before citing.`
-    : `State: ${stateName} follows federal OSHA. Nothing changes.`;
+  const stateLine =
+    !state
+      ? "State: not given. Add the store's state to check state rules."
+    : status.group !== "plan"
+      ? `State: ${stateName} follows federal OSHA. Nothing changes.`
+    : status.standards === "federal"
+      ? `State: ${stateName} runs its own OSHA plan but enforces the federal standards.`
+      : `State: ${stateName} has its own OSHA rules. Check them before citing.`;
 
   // The skill is byte-identical on every request; the cards and past jobs change with every quote.
   // Caching is a prefix match, so the breakpoint sits at the END of the skill: everything before
