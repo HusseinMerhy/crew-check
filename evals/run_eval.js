@@ -138,15 +138,19 @@ function classifyCitation(key) {
 }
 
 // -------------------------------------------- plan states, read from the data
-// PLAN_STATES has two shapes in the wild and this runner has to work on both,
-// because PR #5 is in flight and the harness must run on current main as well
-// as on PR #5's branch. A harness that breaks depending on merge order is worse
-// than the bug it fixes.
+// PLAN_STATES has two shapes and this runner parses both:
 //
-//   current main:   AK: "none"
+//   before PR #5:   AK: "none"
 //                   a bare string. It is the card library status, and it says
 //                   nothing about which standards the state enforces.
-//   after PR #5:    AK: { standards: "federal", library: "none" }
+//   PR #5 onwards:  AK: { standards: "federal", library: "none" }
+//
+// PR #5 has merged, so main carries the object shape and the string branch is
+// inert there. It is kept because a harness that breaks depending on which
+// checkout it is pointed at is worse than the bug it fixes, and because PR #5
+// merged with every `standards` value still marked UNVERIFIED in its own
+// description, which leaves a revert on the table. Drop the string branch when
+// that stops being a worry.
 //
 // The map value is the `standards` string when the object shape gives one, and
 // null when it does not. null means "no standards information", which selects
@@ -213,10 +217,13 @@ function twoPersonField(ans) {
 //   plan, federal  "State: XX runs its own OSHA plan but enforces the federal standards."
 //   plan, own      "State: XX has its own OSHA rules. Check them before citing."
 //
-// The "plan, federal" line is what PR #5 introduces for the 19 state-plan
-// states that adopt the federal standards, and it CONTAINS "own OSHA plan". So
-// the old check would have passed PR #5 without testing the one thing PR #5
-// changes. Each form is matched distinctly instead.
+// The "plan, federal" line is the one PR #5 introduced for the state-plan states
+// that adopt the federal standards, and it CONTAINS "own OSHA plan". So the old
+// check would have passed PR #5 without testing the one thing PR #5 changed.
+// Each form is matched distinctly instead. Which form a state expects is read
+// from its `standards` value, by the same rule app/api/check/route.js uses to
+// choose the line: "federal" takes the plan_federal line, anything else takes
+// plan_own. If that rule changes in the route, change it here too.
 //
 // Order matters below: plan_federal is tested before legacy_plan, because the
 // legacy pattern is a substring of the plan_federal sentence.
@@ -236,16 +243,18 @@ function stateLineForm(line) {
 
 // Which form this state should produce.
 //
-// The "legacy_plan" branch is a FALLBACK and it exists only because PR #5 is
-// unmerged. On current main the PLAN_STATES value is a bare string, so there is
-// no `standards` field to read and no way to know which of the two plan lines a
-// state should produce. Rather than guess, fall back to the old, loose
-// expectation (/own OSHA plan/i, which accepts the legacy line and the
-// plan_federal line alike). It cannot tell those two apart, which is exactly
-// the bug this function fixes elsewhere.
+// The "legacy_plan" branch is a FALLBACK for the pre-PR-#5 string shape, where
+// there is no `standards` field to read and so no way to know which of the two
+// plan lines a state should produce. Rather than guess, it falls back to the old
+// loose expectation (/own OSHA plan/i, which accepts the legacy line and the
+// plan_federal line alike). It cannot tell those two apart, which is exactly the
+// bug this function fixes everywhere else, so it is a known blind spot and not a
+// behaviour to extend.
 //
-// DELETE the legacy_plan branch, and the `null` case in parsePlanStates, once
-// PR #5 has merged and every PLAN_STATES entry carries `standards`.
+// It does not fire on main as of PR #5: every entry there carries `standards`.
+// Confirm with `node evals/run_eval.js --self-check`, which prints the standards
+// values it found. Delete this branch, and the `null` case in parsePlanStates,
+// once a pre-PR-#5 checkout stops being something anyone would point this at.
 function expectedStateForm(st, plan = PLAN) {
   if (!st) return "not_given";
   if (!plan.has(st)) return "federal";

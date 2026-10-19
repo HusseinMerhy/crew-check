@@ -94,8 +94,14 @@ So the corpus is defined as the union of:
 - every citation shaped string in `data/SKILL-v6.7.md`.
 
 Both files are parsed at runtime by `evals/run_eval.js` using the same
-extractor that reads the model's answer. Nothing is hardcoded, so the corpus
-cannot rot when a card is added or a skill version lands.
+extractor that reads the model's answer. The citation set is not hardcoded, so
+the corpus cannot rot when a card is added or a skill version lands.
+
+One thing IS hardcoded and it is a trip hazard: the path `data/SKILL-v6.7.md`.
+PR #5 bumped that file's contents to v6.8 and left the filename alone, so the
+runner still works. A future version bump that renames the file will crash the
+runner at startup on `readFileSync`. Glob the newest `data/SKILL-v*.md` instead
+when that happens, or rename in the runner at the same commit.
 
 Citations the model outputs are sorted into three buckets:
 
@@ -243,14 +249,16 @@ them apart:
 | `plan_federal` | `State: XX runs its own OSHA plan but enforces the federal standards.` |
 | `plan_own` | `State: XX has its own OSHA rules. Check them before citing.` |
 
-`plan_federal` is what PR #5 introduces for the 19 state-plan states that adopt
+`plan_federal` is the line PR #5 introduced for the state-plan states that adopt
 the federal standards. The old test was `/own OSHA plan/i`, and that sentence
 CONTAINS that exact substring, so the harness would have passed PR #5 without
-testing the one thing PR #5 changes. Each form is now matched distinctly, and
+testing the one thing PR #5 changed. Each form is now matched distinctly, and
 `plan_federal` is classified before the legacy pattern because the legacy
 pattern is a substring of it.
 
-Which form is expected comes from the state's `standards` value:
+Which form is expected comes from the state's `standards` value, by the same
+rule `app/api/check/route.js` uses to pick the line. If that rule changes in the
+route, change it in the runner too:
 
 - `standards: "federal"` expects `plan_federal`.
 - `standards: "own"` or `"mixed"`, and any later value that is not `"federal"`,
@@ -258,21 +266,32 @@ Which form is expected comes from the state's `standards` value:
 - a state absent from `PLAN_STATES` expects `federal`. No state expects
   `not_given`.
 
-`PLAN_STATES` has two shapes and the runner parses both, because PR #5 is still
-in flight and this harness has to run on current main as well as on PR #5's
-branch:
+`PLAN_STATES` has two shapes and the runner parses both:
 
-- current main: `AK: "none"`, a bare string. It is the card library status and
+- before PR #5: `AK: "none"`, a bare string. It is the card library status and
   carries no information about which standards the state enforces.
-- after PR #5: `AK: { standards: "federal", library: "none" }`.
+- PR #5 onwards: `AK: { standards: "federal", library: "none" }`.
+
+PR #5 has merged, so main carries the object shape and the string branch does
+not fire there. `--self-check` prints the `standards` values it found, which is
+how to confirm that. The branch is kept anyway for two reasons: a harness that
+breaks depending on which checkout it is pointed at is worse than the bug it
+fixes, and PR #5 merged with every `standards` value still marked UNVERIFIED in
+its own description, which leaves a revert on the table.
 
 On the string shape there is no `standards` field, so `expectedStateForm` falls
 back to the old loose expectation for any plan state, which accepts the legacy
-line and the `plan_federal` line alike. A harness that breaks depending on merge
-order is worse than the bug it fixes. The fallback cannot tell those two forms
-apart, which is the limitation it inherits, so DELETE the `legacy_plan` branch
-and the `null` case in `parsePlanStates` once PR #5 has merged and every entry
-carries `standards`.
+line and the `plan_federal` line alike. It cannot tell those two forms apart,
+which is exactly the bug this fixes everywhere else, so treat it as a known
+blind spot and do not extend it. Delete the `legacy_plan` branch and the `null`
+case in `parsePlanStates` once a pre-PR-#5 checkout stops being something anyone
+would point this at.
+
+Verified offline against the merged PR #5 data, with a local stub reproducing
+`route.js`: the four forms are told apart, the CA, OR and WA cases expect
+`plan_own` and the other 19 plan states expect `plan_federal`, and a regression
+to the single v6.7 plan line fails every state-sensitive case with a reason that
+names both sides. The old check passed all of them.
 
 Failure messages now name both sides, for example
 `State line wrong or missing (wanted plan_own, read plan_federal)`, and every
