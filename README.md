@@ -56,6 +56,7 @@ If either is missing, the app still answers from keyword search alone and the li
 | `lib/skill.js` | **The instructions** (skill v6.7). Always sent in full, so the 5 federal rules are never missed even if the search misses. Generated from `data/SKILL-v6.7.md`. |
 | `app/api/check/route.js` | **Augment + Generate.** Safety checks, runs both searches, builds the system message (skill + `<retrieved_cards>` + `<similar_past_jobs>`) and the user message (quote + state + the State line), calls Claude, enforces the State line, logs the check, returns answer + cards + usage. The API key is only read here, on the server. |
 | `lib/anthropic.js` | **One place where the app talks to Claude.** Used by both `/api/check` and `/api/health`, so the headers and the error shapes cannot drift apart. Has a timeout and never throws: it returns either the data or a named problem (`timeout`, `network`, or the API's own error type). |
+| `lib/agentic.js` | **Agentic retrieval experiment, off by default.** The model may call one read-only tool, `search_cards`, up to 4 times to look for cards the fixed search missed, inside the same reviewed library (federal cards plus the store's state). Runs only when `AGENTIC_RETRIEVAL=on` and the request sends `mode: "agentic"`; the screen never does. Any failure falls back to the fixed call. |
 | `lib/db.js` | Connects to the Neon database (`DATABASE_URL`, added by Vercel → Storage). Turns a vector into the text pgvector expects, checks a vector is really 384 finite numbers, and removes dollar amounts before anything is stored. |
 | `app/api/admin/route.js` | Created the tables and loaded the cards and 9,490 stripped past quotes. **Locked:** `ADMIN_HASH` is `""`, so every request is refused, whatever token is sent. To load data again, put a new SHA-256 fingerprint of a fresh token in `ADMIN_HASH` and redeploy. The token itself is never in the code. |
 | `lib/model.js` | Reads `CLAUDE_MODEL`; only accepts `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5`. |
@@ -63,6 +64,7 @@ If either is missing, the app still answers from keyword search alone and the li
 | `app/api/health/route.js` | One tiny Claude call to prove the key and model work. |
 | `middleware.js` | The lock. If `SITE_PASSCODE` is set, every page and every `/api/*` route asks for it. If not set, the site is open. The compare is constant-time over SHA-256 digests, so the response time does not leak how much of a guess was right. |
 | `tests/run.mjs` | The 16-case test. Scores headline type, OSHA field, State line, no dollars, no em dashes. The test quotes are real customer text and are kept out of GitHub (`tests/inputs.md` is in `.gitignore`). |
+| `tests/agentic.test.mjs` | Unit tests for the agentic loop with a fake model: the search cap, the fallbacks, the message shapes. No network and no API credit: `node tests/agentic.test.mjs`. CI runs it. |
 
 ## The database (Neon Postgres, pgvector)
 
@@ -84,6 +86,7 @@ See `.env.example` for the same list with notes and no values.
 | `CLAUDE_MODEL` | Config | Which model answers. Unset means `claude-haiku-5-5`. |
 | `SITE_PASSCODE` | Secret | The lock. Keep it on whenever the site is not being demoed: unset means anyone who finds the URL can spend your API credit. |
 | `DATABASE_URL` | Secret | The Neon connection string, added by Vercel when the database is attached. Without it the app still answers, but keyword-only, with no past jobs and no log. |
+| `AGENTIC_RETRIEVAL` | Config | `on` lets `/api/check` run the agentic retrieval experiment for requests that ask for it (`node evals/run_eval.js <url> --agentic`). Unset means off. The screen never asks, so users get the fixed pipeline either way. |
 
 After changing any setting: Deployments → **top row** → Redeploy. Never redeploy an older row (it puts old code live).
 
