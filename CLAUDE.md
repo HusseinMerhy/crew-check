@@ -47,7 +47,10 @@ node evals/run_eval.js https://crew-check-five.vercel.app --holdout
 ```
 
 No npm script, by design: `package.json` is not modified by this work.
-No dependencies: node 20 or newer builtins only (`fetch`, `fs`, `path`).
+No dependencies: Node builtins only (`fetch`, `fs`, `path`). The file is ES module
+syntax in a `.js` file, so it needs a Node that detects that on its own. It has been
+run on Node 22.22. A Node 20 release without that detection stops with "Cannot use
+import statement outside a module".
 
 If the site is locked, set `CREW_CHECK_PASSCODE` and the runner sends
 `Authorization: Basic base64("check:<passcode>")`. Without it a locked site
@@ -64,6 +67,43 @@ documented command is `node evals/run_eval.js`.
 Result files land at `evals/result-<model>-<cases|holdout>.json` and are
 gitignored. The holdout criterion is only evaluated when the sibling result
 file for the same model is already on disk, so run the main set first.
+
+### Cost, latency and the KPI table
+
+Each result row records `latency_ms` (as the runner sees it, network to the
+deployment included) and `usage` with all four token fields. `input_tokens` is
+only the uncached part of the prompt, so a cost without the two cache fields is
+wrong whenever the skill prefix is cached.
+
+```
+node evals/compare.js                 # every evals/result-*.json
+node evals/compare.js a.json b.json   # only these
+```
+
+It prints one row per result file: the criteria, cost per check, cost per
+passing case, p50 and p95 latency, and model calls per check, plus the holdout
+gap for each model. Prices live in `evals/prices.json` with the page and the date
+they were read. Re-read the page before quoting a cost.
+
+`compare.js` prints holdout result files as totals only. Do not open
+`evals/result-*-holdout.json` while improving: it carries the holdout's expected
+answers, so reading it is reading the holdout.
+
+### Comparing models
+
+The runner cannot choose the model: the deployment does, from `CLAUDE_MODEL`. To
+compare models without touching production, run the app locally once per model
+and point the runner at it:
+
+```
+CLAUDE_MODEL=claude-sonnet-5-5 npm run dev            # ANTHROPIC_API_KEY set in the environment
+node evals/run_eval.js http://localhost:3000
+```
+
+Without `DATABASE_URL` the local app is keyword-only and logs nothing, which is
+the path the runner tests anyway. Runs against the live site are written to the
+`checks` log like any other check, so a cost baseline pulled from that table
+includes them.
 
 ### What "indexed corpus" means here
 
@@ -161,9 +201,25 @@ are all UNVERIFIED (see below), and gating on an unverified expectation would
 be unsound.
 
 The State line check is an addition of mine, adapted from `stateOk` in
-`tests/run.mjs`. Plan states are parsed from `PLAN_STATES` in `data/cards.js`,
-not hardcoded. The app overwrites the State line in code after generation, so
-this check is a regression guard and should always pass.
+`tests/run.mjs`. Plan states and their `standards` value are parsed from
+`PLAN_STATES` in `data/cards.js`, not hardcoded, and the check expects the form
+the route writes:
+
+| State | Expected State line contains |
+|---|---|
+| not given | `not given` |
+| not a plan state | `follows federal` |
+| plan state, `standards: "federal"` | `runs its own OSHA plan but enforces the federal standards` |
+| plan state, `own` or `mixed` | `has its own OSHA rules` |
+
+The app overwrites the State line in code after generation, so this check is a
+regression guard and should always pass.
+
+It did not, from the Oct 19 State line split until the harness fix: the check
+still looked for `own OSHA plan`, so every CA, WA and OR case failed whatever
+the model wrote (`state-01` to `state-03` here, cases 3, 5 and 13 in
+`tests/run.mjs`). A result file from before the fix is not comparable with one
+after it.
 
 ### The keyword-only caveat
 
@@ -209,8 +265,19 @@ scope that the product does not attempt.
 
 Read the baseline number with both subsets in mind.
 
+The 5 logic cases are not the same set as the cases tagged
+`expected_issue_type: logic`: `tech2-02`, `tech2-04` and `safety-03` carry that
+tag too, so the issue type breakdown's logic row counts 7 in the main set.
+
+What this means for the 90 percent criterion (an estimate until a baseline
+exists): 90 percent of 25 cases allows at most 2 failures. If `logic-01`,
+`logic-02` and `logic-04` fail as expected, the main score tops out at 88
+percent until the product checks quote logic, and a quote logic check is not one
+of the four round levers. Raise that with the owner before spending rounds on it.
+
 ### Scope limit on this work
 
-`CLAUDE.md` and `evals/` are the only things this branch adds. No production
-code was changed: not `lib/`, not `app/`, not `middleware.js`, not `data/`, and
+The branch that added this file changed only `CLAUDE.md` and `evals/`. The
+eval harness fix after it changed `evals/`, `tests/run.mjs` and this file, and
+no product code: not `lib/`, not `app/`, not `middleware.js`, not `data/`, and
 not `package.json`. If a round needs a product fix, that is a separate change.

@@ -1,0 +1,11 @@
+{
+  "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+  "read_on": "2026-10-20",
+  "unit": "USD per million tokens",
+  "note": "First-party Claude API rates for the three models lib/model.js allows. Cache writes use the 5-minute rate because app/api/check/route.js sets cache_control with no ttl. Haiku 5.5 rates are for prompts up to 100,000 tokens; compare.js warns if a check goes past that. Re-read the source page and update read_on before quoting a cost.",
+  "models": {
+    "claude-haiku-5-5": { "input": 0.10, "cache_write_5m": 0.125, "cache_read": 0.01, "output": 0.50 },
+    "claude-sonnet-5-5": { "input": 2.00, "cache_write_5m": 2.50, "cache_read": 0.10, "output": 10.00 },
+    "claude-opus-5-5": { "input": 4.00, "cache_write_5m": 5.00, "cache_read": 0.20, "output": 20.00 }
+  }
+}

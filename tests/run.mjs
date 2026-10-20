@@ -73,7 +73,14 @@ const E = {
   15: { st: "FL", head: ["none"], osha: ["no"] },
   16: { st: "TX", head: ["alone"], osha: ["any"] },
 };
-const PLAN = new Set("AK AZ CA HI IN IA KY MD MI MN NV NM NC OR SC TN UT VT VA WA WY PR".split(" "));
+// Plan states and what each enforces, read from data/cards.js rather than listed here: a plan state
+// that enforces the federal standards gets a different State line from one with its own rules, and
+// a hardcoded copy of this list is how the check fell out of step with the route before.
+const cardsSrc = fs.readFileSync(new URL("../data/cards.js", import.meta.url), "utf8");
+const planBlock = cardsSrc.match(/export\s+const\s+PLAN_STATES\s*=\s*\{([\s\S]*?)\n\}/);
+const PLAN = new Map(planBlock
+  ? [...planBlock[1].matchAll(/\b([A-Z]{2})\s*:\s*\{([^}]*)\}/g)].map((m) => [m[1], (m[2].match(/standards:\s*"(\w+)"/) || [])[1] || null])
+  : []);
 
 function headType(first) {
   if (/^OSHA requires/i.test(first)) return "requires";
@@ -96,8 +103,9 @@ function oshaField(ans) {
 function stateOk(ans, st) {
   const line = ans.split("\n").find((l) => l.trim().startsWith("State:")) || "";
   if (!st) return /not given/i.test(line);
-  if (PLAN.has(st)) return /own OSHA plan/i.test(line);
-  return /follows federal/i.test(line);
+  if (!PLAN.has(st)) return /follows federal/i.test(line);
+  if (PLAN.get(st) === "federal") return /runs its own OSHA plan but enforces the federal standards/i.test(line);
+  return /has its own OSHA rules/i.test(line);
 }
 
 let pass = 0, falseRequires = 0, tokensIn = 0, tokensOut = 0, model = "";
