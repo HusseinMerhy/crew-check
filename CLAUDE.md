@@ -131,6 +131,32 @@ prompt, the chunking, top-k or the corpus inside the fixed pipeline. Compare the
 two on the same model and the same day. The model chooses its own searches, so
 run each agentic set more than once before trusting a difference.
 
+### Running the eval in a browser: /eval
+
+`/eval` on the deployed site runs the same comparison from a browser tab, with
+nothing installed and no API key on the machine that runs it: it calls the site's
+own `/api/check`, so the deployment's key pays. Every check spends real credit,
+and the page asks for confirmation with the number of checks first.
+
+- Scoring: `evals/scoring.js`, the same module `run_eval.js` uses. KPIs:
+  `evals/kpi.js`, the same module `compare.js` uses. The case files and the two
+  data files the scorer parses are fetched from GitHub at the commit the build
+  came from, which needs the repository to be public.
+- It can send the meaning vector (`lib/embed.js`, shared with the check page), so
+  retrieval takes the path users get. Each run's `retrieval` says which path it
+  took; compare like with like.
+- Agentic runs need `AGENTIC_RETRIEVAL=on` on the deployment, then a redeploy.
+  Without it every agentic case is marked ERROR.
+- Holdout runs are shown and copied as totals only, and the JSON download holds
+  the main set only. Do not ask for, or paste, holdout rows from it.
+- The decision rule for agentic search is fixed in the page and on the proof
+  slide of the status deck: every agentic main-set run passes more cases than the
+  fixed run, the holdout does not get worse, agentic cites nothing outside the
+  library, and no run has an errored case.
+
+Results from /eval are not written to disk. "Copy results as text" gives the
+same tables `compare.js` prints, plus the verdict.
+
 ### What "indexed corpus" means here
 
 The literal criterion "zero citations that are not in the indexed corpus" is
@@ -263,6 +289,10 @@ saying so at the top and the bottom of every run, and records
 `"retrieval": "keyword-only"` in the result file. Do not quote the score
 without the caveat.
 
+The browser runner at `/eval` (above) does not have this flaw: it builds the same
+vector the check page builds and sends it, and records `"keywords + meaning"`
+when the deployment used it. That is the score to quote for what users get.
+
 ### Citation verification status
 
 Every `expected_citation` in `evals/cases.jsonl` and `evals/holdout.jsonl`
@@ -308,4 +338,7 @@ eval harness fix after it changed `evals/`, `tests/run.mjs` and this file, and
 no product code: not `lib/`, not `app/`, not `middleware.js`, not `data/`, and
 not `package.json`. If a round needs a product fix, that is a separate change.
 The agentic experiment is product code (`lib/agentic.js`, `lib/anthropic.js`,
-`app/api/check/route.js`) and came as its own change, off by default.
+`app/api/check/route.js`) and came as its own change, off by default. The browser
+runner added `app/eval/page.js` and `lib/embed.js` (moved out of `app/page.js`
+unchanged) and split the scoring out of the runners into `evals/scoring.js` and
+`evals/kpi.js`, with both runners' output checked identical before and after.
