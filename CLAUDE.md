@@ -44,6 +44,7 @@ It exists so a future round does not have to rediscover it. Correct it if it is 
 node evals/run_eval.js                                  # 25 cases, default BASE
 node evals/run_eval.js https://crew-check-five.vercel.app
 node evals/run_eval.js https://crew-check-five.vercel.app --holdout
+node evals/run_eval.js http://localhost:3000 --agentic  # agentic retrieval experiment, see below
 ```
 
 No npm script, by design: `package.json` is not modified by this work.
@@ -104,6 +105,31 @@ Without `DATABASE_URL` the local app is keyword-only and logs nothing, which is
 the path the runner tests anyway. Runs against the live site are written to the
 `checks` log like any other check, so a cost baseline pulled from that table
 includes them.
+
+### The agentic retrieval experiment
+
+`--agentic` asks the server for mode `agentic` (`lib/agentic.js`, Option C in the
+comparison report). The fixed search still runs first; on top of it the model may
+call one read-only tool, `search_cards`, up to 4 times, over the same reviewed
+library. The server needs `AGENTIC_RETRIEVAL=on`, and a case it answers with the
+fixed pipeline is marked ERROR, so a fixed score cannot pass as an agentic one.
+A case that fell back after an agentic failure is scored on the fallback answer
+and listed with its reason.
+
+```
+AGENTIC_RETRIEVAL=on CLAUDE_MODEL=claude-haiku-5-5 npm run dev
+node evals/run_eval.js http://localhost:3000             # fixed, same server
+node evals/run_eval.js http://localhost:3000 --agentic
+node evals/compare.js
+```
+
+Results go to `result-<model>-<set>-agentic.json`, so they never overwrite the
+fixed pipeline's, and the holdout criterion pairs agentic with agentic.
+
+This is an architecture comparison, not a round: a round changes one of the
+prompt, the chunking, top-k or the corpus inside the fixed pipeline. Compare the
+two on the same model and the same day. The model chooses its own searches, so
+run each agentic set more than once before trusting a difference.
 
 ### What "indexed corpus" means here
 
@@ -281,3 +307,5 @@ The branch that added this file changed only `CLAUDE.md` and `evals/`. The
 eval harness fix after it changed `evals/`, `tests/run.mjs` and this file, and
 no product code: not `lib/`, not `app/`, not `middleware.js`, not `data/`, and
 not `package.json`. If a round needs a product fix, that is a separate change.
+The agentic experiment is product code (`lib/agentic.js`, `lib/anthropic.js`,
+`app/api/check/route.js`) and came as its own change, off by default.

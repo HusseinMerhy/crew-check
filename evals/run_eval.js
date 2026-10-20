@@ -4,6 +4,11 @@
 //   node evals/run_eval.js                                       25 cases, default BASE
 //   node evals/run_eval.js https://crew-check-five.vercel.app
 //   node evals/run_eval.js https://crew-check-five.vercel.app --holdout
+//   node evals/run_eval.js http://localhost:3000 --agentic       the agentic retrieval experiment
+//
+// --agentic asks the server for mode "agentic" (lib/agentic.js). The server must have
+// AGENTIC_RETRIEVAL=on; a case the server answers with the fixed pipeline is marked ERROR, so a
+// fixed-pipeline score can never be reported as an agentic one.
 //
 // Environment:
 //   CREW_CHECK_PASSCODE   the site passcode, if the middleware gate is on
@@ -32,6 +37,8 @@ const firstPositional = argv.find((a) => !a.startsWith("--"));
 const BASE = (firstPositional || "https://crew-check-five.vercel.app").replace(/\/+$/, "");
 const SET = HOLDOUT ? "holdout" : "cases";
 const CASES_FILE = path.join(HERE, `${SET}.jsonl`);
+const MODE = argv.includes("--agentic") ? "agentic" : "fixed";
+const SUFFIX = MODE === "agentic" ? "-agentic" : "";
 
 const PASSCODE = process.env.CREW_CHECK_PASSCODE || "";
 const authHeader = PASSCODE ? { authorization: "Basic " + Buffer.from(`check:${PASSCODE}`).toString("base64") } : {};
@@ -208,6 +215,7 @@ const cases = fs.readFileSync(CASES_FILE, "utf8")
 console.log(BANNER);
 console.log(`\nBASE: ${BASE}`);
 console.log(`Set: ${SET}.jsonl (${cases.length} cases)`);
+console.log(`Mode: ${MODE}`);
 console.log(`Passcode: ${PASSCODE ? "sent" : "not set"}`);
 console.log(`Corpus: ${CORPUS.size} citation strings parsed from data/cards.js and data/SKILL-v6.7.md`);
 console.log(`Deny list: ${DENY.join(", ")}\n`);
@@ -226,7 +234,7 @@ for (const c of cases) {
     const r = await fetch(`${BASE}/api/check`, {
       method: "POST",
       headers: { "content-type": "application/json", ...authHeader },
-      body: JSON.stringify({ quote: c.quote_text, state }),
+      body: JSON.stringify({ quote: c.quote_text, state, ...(MODE === "agentic" ? { mode: "agentic" } : {}) }),
     });
     row.http = r.status;
     // A 401 or an error page is not JSON. Mark the case, never abort the run.
@@ -247,6 +255,12 @@ for (const c of cases) {
 
   if (!d || d.ok !== true) {
     const why = `api: ${d?.problem || "unknown"} ${String(d?.detail || "").slice(0, 100)}`.trim();
+    rows.push({ ...row, result: "ERROR", why: [why] });
+    console.log(`${c.id.padEnd(16)} ERROR  ${why}`);
+    continue;
+  }
+  if (MODE === "agentic" && d.mode !== "agentic") {
+    const why = "server answered with the fixed pipeline: set AGENTIC_RETRIEVAL=on there";
     rows.push({ ...row, result: "ERROR", why: [why] });
     console.log(`${c.id.padEnd(16)} ERROR  ${why}`);
     continue;
@@ -298,6 +312,8 @@ for (const c of cases) {
     expected_citation: c.expected_citation || null, expected_citation_seen: citeSeen,
     citations: cites, out_of_corpus: out.map((x) => x.raw), deeper_than_corpus: deeper.map((x) => x.raw),
     deny_hits: denied.map((x) => x.raw), search: d.search, usage, headline: first, answer: ans,
+    // The fixed pipeline makes one call per check; a deployment older than the mode field reports none.
+    model_calls: d.model_calls ?? 1, tool_calls: d.tool_calls || [], agentic_fallback: d.agentic_fallback ?? null,
   });
 
   console.log(
@@ -371,12 +387,18 @@ line(`\nModel: ${model || "unknown"}`);
 line(`Tokens: in ${tokensIn}, out ${tokensOut}, cache read ${cacheRead}, cache write ${cacheWrite}`);
 line(`Cost and latency: node evals/compare.js`);
 line(`Retrieval: keyword-only (no vector sent)`);
+if (MODE === "agentic") {
+  const fellBack = scored.filter((r) => r.agentic_fallback);
+  const searches = scored.reduce((n, r) => n + r.tool_calls.length, 0);
+  line(`Agentic: ${searches} searches over ${scored.length} answered cases; ${fellBack.length} fell back to the fixed pipeline`);
+  for (const r of fellBack) line(`  ${r.id}: ${r.agentic_fallback}`);
+}
 line("\n" + BANNER);
 
 // --------------------------------------------------------------------- write
-const outPath = path.join(HERE, `result-${model || "unknown"}-${SET}.json`);
+const outPath = path.join(HERE, `result-${model || "unknown"}-${SET}${SUFFIX}.json`);
 fs.writeFileSync(outPath, JSON.stringify({
-  base: BASE, set: SET, model: model || null, retrieval: "keyword-only", vector_sent: false,
+  base: BASE, set: SET, mode: MODE, model: model || null, retrieval: "keyword-only", vector_sent: false,
   ran_at: new Date().toISOString(),
   score, passed, total: rows.length, errors: errors.length,
   false_positives: fps.map((r) => r.id), false_negatives: fns.map((r) => r.id),
@@ -399,7 +421,7 @@ const criteria = [
 
 // The holdout criterion needs both result files. Report, do not invent.
 const otherSet = HOLDOUT ? "cases" : "holdout";
-const otherPath = path.join(HERE, `result-${model || "unknown"}-${otherSet}.json`);
+const otherPath = path.join(HERE, `result-${model || "unknown"}-${otherSet}${SUFFIX}.json`);
 if (model && fs.existsSync(otherPath)) {
   try {
     const other = JSON.parse(fs.readFileSync(otherPath, "utf8"));
