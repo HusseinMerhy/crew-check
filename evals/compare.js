@@ -57,6 +57,9 @@ for (const file of files) {
   const costs = answered.map((x) => costOf(x.usage, price));
   const total = costs.some((c) => c == null) ? null : costs.reduce((a, b) => a + b, 0);
   const calls = answered.map((x) => x.model_calls ?? 1);
+  const searches = answered.map((x) => (x.tool_calls || []).length);
+  const fellBack = answered.filter((x) => x.agentic_fallback).length;
+  if (fellBack) warnings.push(`${path.basename(file)}: ${fellBack} of ${answered.length} checks fell back to the fixed pipeline; their cost includes the failed agentic steps.`);
   const latencies = answered.map((x) => x.latency_ms).filter((x) => typeof x === "number");
 
   if (!answered.some((x) => x.usage)) warnings.push(`${path.basename(file)}: no per-case usage (written before run_eval.js recorded it), so no cost.`);
@@ -75,12 +78,13 @@ for (const file of files) {
     perPass: total == null || !r.passed ? null : total / r.passed,
     p50: pct(latencies, 50), p95: pct(latencies, 95),
     calls: calls.length ? calls.reduce((a, b) => a + b, 0) / calls.length : null,
+    searches: searches.length ? searches.reduce((a, b) => a + b, 0) / searches.length : null,
     ranAt: r.ran_at,
   });
 }
 
 const head = ["Set", "Model", "Mode", "Score", "Out-of-corpus cites", "Deny-list cites", "Clean FP rate", "Errors",
-  "Cost per check", "Cost per passing case", "p50 latency", "p95 latency", "Model calls per check"];
+  "Cost per check", "Cost per passing case", "p50 latency", "p95 latency", "Model calls per check", "Searches per check"];
 console.log(`| ${head.join(" | ")} |`);
 console.log(`|${head.map(() => "---").join("|")}|`);
 for (const s of summaries) {
@@ -88,6 +92,7 @@ for (const s of summaries) {
     s.set, s.model, s.mode, `${s.score.toFixed(1)}% (${s.passed}/${s.total})`, s.out, s.deny, `${s.cleanFp.toFixed(1)}%`, s.errors,
     money(s.perCheck), s.passed ? money(s.perPass) : "no passing case",
     s.p50 == null ? "n/a" : `${s.p50} ms`, s.p95 == null ? "n/a" : `${s.p95} ms`, s.calls == null ? "n/a" : s.calls.toFixed(2),
+    s.searches == null ? "n/a" : s.searches.toFixed(2),
   ].join(" | ")} |`);
 }
 
