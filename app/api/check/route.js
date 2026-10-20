@@ -7,6 +7,7 @@ import { findCards, stateStatus } from "../../../lib/retrieve";
 import { getModel } from "../../../lib/model";
 import { getSql, toVec, isVector, stripMoney } from "../../../lib/db";
 import { callClaude, textOf } from "../../../lib/anthropic";
+import { runAgentic, addUsage, cardTag, AGENTIC_NOTE } from "../../../lib/agentic";
 import { CARDS } from "../../../data/cards";
 export const dynamic = "force-dynamic";
 
@@ -76,7 +77,7 @@ export async function POST(req) {
 
   // ---------- A: AUGMENT ----------
   const cardsBlock = found.length
-    ? found.map((f) => `<card citation="${f.card.citation}" layer="${f.card.layer}" state="${f.card.state}">${f.card.title}: ${f.card.text}</card>`).join("\n")
+    ? found.map((f) => cardTag(f.card)).join("\n")
     : "(no card matched this quote)";
   const similarBlock = similar.length
     ? similar.map((s, i) => `<past_job n="${i + 1}" job="${s.job}" tech1_hours="${s.tech1_h ?? "?"}" tech2_hours="${s.tech2_h ?? "?"}" reason_written="${(s.reason_found || "").slice(0, 200)}">${String(s.tech_reported || "").slice(0, 300)} | Steps: ${String(s.steps || "").slice(0, 500)}</past_job>`).join("\n")
@@ -139,9 +140,30 @@ ${similarBlock}
   const user = `Check the second tech on this quote.\nStore state: ${state || "not given"}. ${stateNote}\nUse exactly this State line: "${stateLine}"\nLine 1 must be one of the 6 headlines from output_format, copied word for word (fill in only the bracketed part).\n\n<quote>\n${quote}\n</quote>`;
 
   // ---------- G: GENERATE ----------
-  const call = await callClaude({ key, model, system, user, maxTokens: MAX_ANSWER_TOKENS });
-  if (!call.ok) return Response.json({ ok: false, model, status: call.status, problem: call.problem, detail: call.detail }, { status: 502 });
-  const data = call.data;
+  // The agentic retrieval experiment (lib/agentic.js) runs only when the deployment turns it on AND
+  // the request asks for it. The screen never sends a mode, so users get the fixed call below
+  // whatever the setting. Any agentic failure falls back to the fixed call, and the response says why.
+  const agentic = process.env.AGENTIC_RETRIEVAL === "on" && body?.mode === "agentic";
+  let data = null, usage = null, modelCalls = 0, toolCalls = [], agentCards = [], agenticFallback = null;
+  if (agentic) {
+    const run = await runAgentic({
+      callModel: (opts) => callClaude({ key, model, system: [...system, { type: "text", text: AGENTIC_NOTE }], maxTokens: MAX_ANSWER_TOKENS, ...opts }),
+      searchCards: (q) => findCards(q, state),
+      user,
+      seenIds: found.map((f) => f.card.id),
+    });
+    usage = run.usage; modelCalls = run.calls; toolCalls = run.toolCalls;
+    if (run.ok) { data = run.data; agentCards = run.extraCards; }
+    else agenticFallback = run.reason;
+  }
+  if (!data) {
+    const call = await callClaude({ key, model, system, user, maxTokens: MAX_ANSWER_TOKENS });
+    modelCalls++;
+    if (!call.ok) return Response.json({ ok: false, model, status: call.status, problem: call.problem, detail: call.detail, agentic_fallback: agenticFallback }, { status: 502 });
+    data = call.data;
+    // The fixed pipeline passes the API's usage through untouched; after a fallback it is the sum.
+    usage = agentic ? addUsage(usage, data.usage) : data.usage;
+  }
   let answer = textOf(data);
 
   // Enforce the State line even if the model reworded it, except for the lone-worker answer,
@@ -161,9 +183,13 @@ ${similarBlock}
     }
     answer = lines.join("\n");
   }
-  if (!answer) return Response.json({ ok: false, model, problem: "empty_answer", detail: `stop_reason: ${data.stop_reason}. The model ran out of room before answering.`, usage: data.usage }, { status: 502 });
+  if (!answer) return Response.json({ ok: false, model, problem: "empty_answer", detail: `stop_reason: ${data.stop_reason}. The model ran out of room before answering.`, usage }, { status: 502 });
 
-  const cardsOut = found.map((f) => ({ citation: f.card.citation, title: f.card.title, layer: f.card.layer, state: f.card.state, matched: f.matched, similarity: f.similarity }));
+  // Cards the agent found with its own searches are listed after the fixed search's, marked by via.
+  const cardsOut = [
+    ...found.map((f) => ({ citation: f.card.citation, title: f.card.title, layer: f.card.layer, state: f.card.state, matched: f.matched, similarity: f.similarity })),
+    ...agentCards.map(({ card, query }) => ({ citation: card.citation, title: card.title, layer: card.layer, state: card.state, matched: [], similarity: null, via: "search_cards", query })),
+  ];
   const similarOut = similar.map((s) => ({ job: s.job, category: s.category, tech1_h: s.tech1_h, tech2_h: s.tech2_h, reason_found: s.reason_found, tech_reported: String(s.tech_reported || "").slice(0, 300), similarity: Number(s.similarity) }));
 
   // ---------- LOG ----------
@@ -172,7 +198,7 @@ ${similarBlock}
     try {
       await sql.query(
         `insert into checks (state, quote_text, model, cards, similar_quotes, answer, tokens_in, tokens_out) values ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [state || null, stripMoney(quote), model, JSON.stringify(cardsOut), JSON.stringify(similarOut), answer, data.usage?.input_tokens ?? null, data.usage?.output_tokens ?? null]);
+        [state || null, stripMoney(quote), model, JSON.stringify(cardsOut), JSON.stringify(similarOut), answer, usage?.input_tokens ?? null, usage?.output_tokens ?? null]);
       logged = true;
     } catch { /* logging must never break the answer */ }
   }
@@ -180,5 +206,6 @@ ${similarBlock}
   // Past jobs are internal data: only shown on screen when the site is locked with SITE_PASSCODE.
   const locked = !!process.env.SITE_PASSCODE;
   return Response.json({ ok: true, model, answer, stop_reason: data.stop_reason, search: searchMode, logged,
-    cards: cardsOut, similar: locked ? similarOut : [], similar_hidden: !locked && similarOut.length > 0, state: { code: state || null, ...status }, usage: data.usage });
+    cards: cardsOut, similar: locked ? similarOut : [], similar_hidden: !locked && similarOut.length > 0, state: { code: state || null, ...status }, usage,
+    mode: agentic ? "agentic" : "fixed", model_calls: modelCalls, tool_calls: toolCalls, agentic_fallback: agenticFallback });
 }
