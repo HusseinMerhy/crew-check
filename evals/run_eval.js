@@ -115,8 +115,16 @@ function classifyCitation(key) {
 }
 
 // -------------------------------------------- plan states, read from the data
+// state -> its `standards` value ("federal", "own", "mixed"), because the State line the route
+// writes for a plan state depends on it. A plan state with no standards value maps to null.
 const planBlock = CARDS_SRC.match(/export\s+const\s+PLAN_STATES\s*=\s*\{([\s\S]*?)\n\}/);
-const PLAN = new Set(planBlock ? [...planBlock[1].matchAll(/\b([A-Z]{2})\s*:/g)].map((m) => m[1]) : []);
+const PLAN = new Map(planBlock
+  ? [...planBlock[1].matchAll(/\b([A-Z]{2})\s*:\s*\{([^}]*)\}/g)].map((m) => [m[1], (m[2].match(/standards:\s*"(\w+)"/) || [])[1] || null])
+  : []);
+if (PLAN.size === 0) {
+  console.error("Could not read PLAN_STATES from data/cards.js, so the State line cannot be scored.");
+  process.exit(2);
+}
 
 // ------------------------------------------------------- answer field readers
 // headType and oshaField are from tests/run.mjs.
@@ -153,13 +161,15 @@ function twoPersonField(ans) {
   if (/No/i.test(f)) return "no";
   return "missing";
 }
-// adapted from stateOk in tests/run.mjs
+// adapted from stateOk in tests/run.mjs. One branch per State line form in app/api/check/route.js:
+// a plan state that enforces the federal standards gets a different line from one with its own rules.
 function stateLineOk(ans, st) {
   const line = ans.split("\n").find((l) => l.trim().startsWith("State:")) || "";
   if (!line) return false;
   if (!st) return /not given/i.test(line);
-  if (PLAN.has(st)) return /own OSHA plan/i.test(line);
-  return /follows federal/i.test(line);
+  if (!PLAN.has(st)) return /follows federal/i.test(line);
+  if (PLAN.get(st) === "federal") return /runs its own OSHA plan but enforces the federal standards/i.test(line);
+  return /has its own OSHA rules/i.test(line);
 }
 // Tech 2 hours as billed in the quote, e.g. "Tech 2 - 3 hrs"
 function tech2Hours(quote) {
@@ -204,12 +214,14 @@ console.log(`Deny list: ${DENY.join(", ")}\n`);
 
 // ----------------------------------------------------------------- run cases
 const rows = [];
-let model = "", tokensIn = 0, tokensOut = 0;
+let model = "", tokensIn = 0, tokensOut = 0, cacheRead = 0, cacheWrite = 0;
 
 for (const c of cases) {
   const state = stateOf(c.quote_text);
   const row = { id: c.id, state, expected: c.expected_verdict, expected_issue_type: c.expected_issue_type };
   let d;
+  // Wall clock as this client sees it: network to the deployment plus the whole check.
+  const started = Date.now();
   try {
     const r = await fetch(`${BASE}/api/check`, {
       method: "POST",
@@ -220,6 +232,7 @@ for (const c of cases) {
     // A 401 or an error page is not JSON. Mark the case, never abort the run.
     try {
       d = await r.json();
+      row.latency_ms = Date.now() - started;
     } catch (e) {
       const hint = r.status === 401 ? "401, the site is locked: set CREW_CHECK_PASSCODE" : `not JSON (${String(e).slice(0, 80)})`;
       rows.push({ ...row, result: "ERROR", why: [hint] });
@@ -240,8 +253,18 @@ for (const c of cases) {
   }
 
   model = d.model || model;
-  tokensIn += d.usage?.input_tokens || 0;
-  tokensOut += d.usage?.output_tokens || 0;
+  // All four usage fields: input_tokens counts only the uncached part, so a cost computed
+  // without the cache fields is wrong whenever the skill prefix is cached.
+  const usage = {
+    input_tokens: d.usage?.input_tokens || 0,
+    output_tokens: d.usage?.output_tokens || 0,
+    cache_read_input_tokens: d.usage?.cache_read_input_tokens || 0,
+    cache_creation_input_tokens: d.usage?.cache_creation_input_tokens || 0,
+  };
+  tokensIn += usage.input_tokens;
+  tokensOut += usage.output_tokens;
+  cacheRead += usage.cache_read_input_tokens;
+  cacheWrite += usage.cache_creation_input_tokens;
 
   const ans = d.answer || "";
   const first = (ans.split("\n")[0] || "").trim();
@@ -274,13 +297,13 @@ for (const c of cases) {
     head, osha, safety, two_person: twoP, tech2_hours: t2, state_line_ok: stateLineOk(ans, state),
     expected_citation: c.expected_citation || null, expected_citation_seen: citeSeen,
     citations: cites, out_of_corpus: out.map((x) => x.raw), deeper_than_corpus: deeper.map((x) => x.raw),
-    deny_hits: denied.map((x) => x.raw), search: d.search, headline: first, answer: ans,
+    deny_hits: denied.map((x) => x.raw), search: d.search, usage, headline: first, answer: ans,
   });
 
   console.log(
     `${c.id.padEnd(16)} ${ok ? "PASS" : "FAIL"}  ` +
     `exp=${String(c.expected_verdict).padEnd(4)} got=${verdict.padEnd(4)} | ` +
-    `head=${head.padEnd(8)} OSHA=${osha.padEnd(7)} Safety=${safety.padEnd(7)} 2p=${twoP.padEnd(7)} T2h=${t2 ?? "-"}` +
+    `head=${head.padEnd(8)} OSHA=${osha.padEnd(7)} Safety=${safety.padEnd(7)} 2p=${twoP.padEnd(7)} T2h=${t2 ?? "-"} ${row.latency_ms}ms` +
     (why.length ? `\n${" ".repeat(18)}${why.join("; ")}` : "")
   );
 }
@@ -345,7 +368,8 @@ if (errors.length) {
 }
 
 line(`\nModel: ${model || "unknown"}`);
-line(`Tokens: in ${tokensIn}, out ${tokensOut}`);
+line(`Tokens: in ${tokensIn}, out ${tokensOut}, cache read ${cacheRead}, cache write ${cacheWrite}`);
+line(`Cost and latency: node evals/compare.js`);
 line(`Retrieval: keyword-only (no vector sent)`);
 line("\n" + BANNER);
 
@@ -358,7 +382,7 @@ fs.writeFileSync(outPath, JSON.stringify({
   false_positives: fps.map((r) => r.id), false_negatives: fns.map((r) => r.id),
   clean_subset: { total: cleanScored.length, false_positives: cleanFp.map((r) => r.id), rate: cleanFpRate },
   out_of_corpus: allOut, deny_hits: allDeny, deeper_than_corpus: allDeeper,
-  tokens_in: tokensIn, tokens_out: tokensOut,
+  tokens_in: tokensIn, tokens_out: tokensOut, cache_read_tokens: cacheRead, cache_write_tokens: cacheWrite,
   deny_list: DENY, corpus_size: CORPUS.size,
   rows,
 }, null, 2));
