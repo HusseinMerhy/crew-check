@@ -309,3 +309,11 @@ no product code: not `lib/`, not `app/`, not `middleware.js`, not `data/`, and
 not `package.json`. If a round needs a product fix, that is a separate change.
 The agentic experiment is product code (`lib/agentic.js`, `lib/anthropic.js`,
 `app/api/check/route.js`) and came as its own change, off by default.
+
+### Permit check (skill v6.9)
+
+v6.9 added a `<permit_check>` section and an optional `Permit:` line to the skill. It is
+context only: it never changes the headline, any layer or the summary line, so the
+pass and flag mapping above is unaffected, and it cites nothing, so the corpus test
+is unaffected. It is a product change, not a round. It has not been run against a
+model yet: run the eval once on the new skill before trusting the wording.
