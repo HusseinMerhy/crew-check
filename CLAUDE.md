@@ -309,3 +309,14 @@ no product code: not `lib/`, not `app/`, not `middleware.js`, not `data/`, and
 not `package.json`. If a round needs a product fix, that is a separate change.
 The agentic experiment is product code (`lib/agentic.js`, `lib/anthropic.js`,
 `app/api/check/route.js`) and came as its own change, off by default.
+
+### Vol 2, Phase 1: client profile (`scripts/client-profile.mjs`)
+
+Reads two ClickUp CSV exports (all quotes, and the Tech 2 export) and prints, per FM and
+job type, how often a second tech was quoted and accepted. Counts only: no prices, no
+names. The exports are real customer data and stay out of git, like `tests/inputs.md`.
+The exports have no FM column, so the FM comes from the work order number format; each
+rule in `FM_RULES` was checked against ClickUp on a sample, and a format shared by
+several FMs is left out rather than guessed. Job type comes from the Tech 2 export where
+it exists and from keywords otherwise; the script prints how often the two agree.
+It is not part of the check route and not a round.
