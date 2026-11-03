@@ -2,6 +2,7 @@
 // and the read-only ClickUp import's parsing. No API credit: node tests/vol2.test.mjs
 import { jobOf, lookup, MIN_QUOTES } from "../lib/history.js";
 import { parseTaskRef, fieldText } from "../lib/clickup.js";
+import { syncQuotes, MAX_PER_RUN } from "../lib/sync.js";
 
 let pass = 0, fail = 0;
 const eq = (name, got, want) => {
@@ -50,6 +51,43 @@ eq("dropdown by orderindex", fieldText(task, "State"), "OH");
 eq("dropdown by option id", fieldText(task, "21. Comp"), "BKR");
 eq("unset field", fieldText(task, "Trade"), "");
 eq("missing field", fieldText(task, "Store"), "");
+
+// the daily sync loop, with ClickUp, the database and the check faked
+const quoteTask = (id, text, state = 34) => ({ id, name: `WO ${id}`, url: "", status: { status: "quote ready" }, custom_fields: [
+  { name: "Client Quote", type: "text", value: text },
+  { name: "State", type: "drop_down", value: state, type_config: { options: [{ id: "a", name: "OH", orderindex: 34 }, { id: "b", name: "TX", orderindex: 44 }] } },
+  { name: "21. Comp", type: "drop_down", value: 5, type_config: { options: [{ id: "c", name: "BKR", orderindex: 5 }] } },
+] });
+function fakeDb() {
+  const rows = new Map();
+  return { rows, query: async (q, p) => {
+    if (q.startsWith("select")) return rows.has(p[0]) ? [{ quote_hash: rows.get(p[0])[7] }] : [];
+    rows.set(p[0], p); return [];
+  } };
+}
+const hinge = "Tech reported: rear door hinge broken, door drags on the floor";
+let checks = 0;
+const okCheck = async () => { checks++; return { ok: true, answer: "The second tech is justified: this job needs two pairs of hands.\nOSHA: No | Safety: No | Two-person step: Yes" }; };
+const pages = [[quoteTask("t1", hinge), quoteTask("t2", "too short"), quoteTask("t3", hinge + " again", 44)]];
+const list = async (page) => ({ tasks: pages[page] || [], last: page >= pages.length - 1 });
+const db = fakeDb();
+let out = await syncQuotes({ list, sql: db, check: okCheck, history: H });
+eq("first run checks the two real quotes", [out.checked, out.no_quote, out.unchanged], [2, 1, 0]);
+eq("stores the headline", db.rows.get("t1")[8], "The second tech is justified: this job needs two pairs of hands.");
+eq("stores the state from ClickUp", db.rows.get("t3")[6], "TX");
+eq("stores the entity history line", db.rows.get("t1")[10], "BKR quoted a second tech on 80% of 30 past door repair or replacement quotes (all entities: 70%).");
+out = await syncQuotes({ list, sql: db, check: okCheck, history: H });
+eq("second run skips unchanged quotes", [out.checked, out.unchanged, checks], [0, 2, 2]);
+pages[0][0] = quoteTask("t1", hinge + ", now with a new step");
+out = await syncQuotes({ list, sql: db, check: okCheck, history: H });
+eq("a changed quote is checked again", [out.checked, out.unchanged], [1, 1]);
+const failing = async () => ({ ok: false, problem: "timeout" });
+const db2 = fakeDb();
+out = await syncQuotes({ list, sql: db2, check: failing, history: null });
+eq("a failed check is stored without a hash, so the next run retries it", [out.failed, db2.rows.get("t1")[7], db2.rows.get("t1")[12]], [2, null, "timeout"]);
+const many = Array.from({ length: MAX_PER_RUN + 3 }, (_, i) => quoteTask(`m${i}`, hinge + ` #${i}`));
+out = await syncQuotes({ list: async () => ({ tasks: many, last: true }), sql: fakeDb(), check: okCheck, history: null });
+eq("caps a run and says more are waiting", [out.checked, out.left_for_next_run], [MAX_PER_RUN, true]);
 
 console.log(`${pass}/${pass + fail} passed`);
 process.exit(fail ? 1 : 0);

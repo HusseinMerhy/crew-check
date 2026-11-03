@@ -94,6 +94,9 @@ See `.env.example` for the same list with notes and no values.
 | `CLICKUP_API_TOKEN` | Secret | Vol 2: lets the check page import a quote from a ClickUp task link, **read only** (the code sends GET requests only). Unset means the import is off. |
 | `CLICKUP_TEAM_ID` | Config | Vol 2: the ClickUp workspace id, needed to import by WO number (WO-1234) instead of the task link. |
 
+| `CRON_SECRET` | Secret | Vol 2: turns on the daily automatic check (`/queue`). Any long random string; Vercel Cron sends it so the passcode lock lets the daily run through. Unset means no daily run. |
+| `CLICKUP_SYNC_STATUSES` | Config | Vol 2: which ClickUp statuses the daily check reads, comma separated. Unset means `quote ready,!! waiting for approval`. |
+
 After changing any setting: Deployments → **top row** → Redeploy. Never redeploy an older row (it puts old code live).
 
 ## Running the tests

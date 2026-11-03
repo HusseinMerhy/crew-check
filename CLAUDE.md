@@ -338,6 +338,23 @@ GET requests only and never reads the task description (work orders have carried
 details there). The owner's rule says ClickUp is read-only: this keeps to it, but confirm
 with the owner before turning the token on, since it is the first code that reads ClickUp.
 
+### Vol 2 daily automatic check (`/queue`)
+
+Once a day Vercel Cron (`vercel.json`) calls `/api/clickup/sync`. It lists the tasks in
+the waiting statuses (`CLICKUP_SYNC_STATUSES`, default "quote ready" and "!! waiting for
+approval"), GET only, and runs each new or changed quote through the same `POST` as
+`/api/check`, at most 20 per run, newest first. Answers go to the `auto_checks` table
+(created on the first run) and show on `/queue`. A quote is checked again only when its
+text or state changes; a failed check is retried on the next run. The loop is
+`lib/sync.js`, tested with fakes in `tests/vol2.test.mjs`.
+
+These checks are keyword-only: there is no browser to build the meaning vector, the same
+caveat as the Node eval runner. They also land in the `checks` log.
+
+Access: the passcode lock lets `/api/clickup/sync` through only with
+`Authorization: Bearer <CRON_SECRET>`, which Vercel Cron sends. "Run now" on `/queue`
+uses `?manual=1`, accepted only while `SITE_PASSCODE` is on.
+
 ### Two subsets will fail, by design
 
 These are not defects in the runner and not regressions. They record wanted

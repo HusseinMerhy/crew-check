@@ -27,6 +27,12 @@ export async function middleware(req) {
   const passcode = process.env.SITE_PASSCODE;
   if (!passcode) return NextResponse.next();
   const header = req.headers.get("authorization") || "";
+  // Vercel Cron cannot type a passcode: it sends "Bearer <CRON_SECRET>". Only the daily
+  // ClickUp check accepts that, and only when CRON_SECRET is set.
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && req.nextUrl.pathname === "/api/clickup/sync" && await sameSecret(header, `Bearer ${cronSecret}`)) {
+    return NextResponse.next();
+  }
   if (header.startsWith("Basic ")) {
     try {
       const decoded = atob(header.slice(6));
