@@ -1,44 +1,24 @@
-// Vol 2, Phase 1: how often each FM accepts a second tech, by job type.
+// Vol 2: how often each of our entities (BKR, SFM, AF...) quoted a second tech, by job type.
 // Reads two ClickUp exports (never ClickUp itself) and prints counts only: no prices, no names.
 //
-//   node scripts/client-profile.mjs <all-quotes.csv> <tech2-quotes.csv>
+//   node scripts/client-profile.mjs <all-quotes.csv> <tech2-quotes.csv> [--json out.json]
 //
-// all-quotes.csv: columns "Task ID", "Task Name", "Client Quote (text)", "Status".
-// tech2-quotes.csv: columns "ClickUp task ID", "WO", "Job type", "Tech 2 hours",
-//   "Tech 3+ billed", "Any reason found" (the Tech 2 export the skill's history table came from).
-// The exports carry no FM column, so the FM is read from the work order number format.
-// Each rule below was checked against the FM field in ClickUp on a random sample; add a rule
-// only after the same check. Rows no rule claims are grouped as "Other FMs"; formats shared
-// by several FMs are left out entirely.
+// all-quotes.csv: "Task ID", "Task Name", "Client Quote (text)", "Status", and ideally "21. Comp".
+// tech2-quotes.csv: "ClickUp task ID", "Job type", "Tech 2 hours", "Tech 3+ billed",
+//   "Any reason found" (the Tech 2 export the skill's history table came from).
+//
+// The entity comes from the export's Comp column when it has one. Without it, only the work
+// order formats below can be told apart; every rule was checked against the Comp field in
+// ClickUp on a random sample, and a quote no rule claims is counted for "everyone" only.
+// --json writes the numbers for ENTITY_HISTORY in Vercel. That file is company data: keep it
+// out of git (the repository is public).
 import fs from "node:fs";
+import { ENTITIES, jobOf } from "../lib/history.js";
 
-const FM_RULES = [
-  // 34 of 34 sampled quotes in this format were EMCOR (Oct 27, 2026).
-  { fm: "EMCOR", test: (wo) => /^\d{7}-\d{8}$/.test(wo) },
-];
-// Mostly EMCOR, but 1 of 28 sampled was another FM: excluded rather than guessed.
-const AMBIGUOUS = [(wo) => /^\d{8}$/.test(wo)];
-
-// Same labels as the Tech 2 export's "Job type". First match wins, so the order matters.
-const JOB_RULES = [
-  ["Water heater", /water heater|\bboiler\b/],
-  ["Grease trap", /grease trap|interceptor/],
-  ["Toilet / urinal", /toilet|urinal|flushometer|flush valve/],
-  ["Snake / clog / drain", /snak|clog|drain|hydro ?jet|jett|backup|back up|sewer/],
-  ["Sink / faucet", /faucet|\bsink\b|p-?trap/],
-  ["Leak / pipe", /leak|pipe|valve|water line/],
-  ["Board-up / glass", /board.?up|plywood|glass|window/],
-  ["Lock / key", /\block|rekey|re-key|\bkey\b|cylinder/],
-  ["Door repair or replacement", /door|closer|hinge|threshold|panic|crash bar/],
-  ["Roof", /\broof/],
-  ["Ceiling tiles", /ceiling tile|ceiling/],
-  ["Floor tiles", /floor|tile|carpet|grout/],
-  ["HVAC / refrigeration", /hvac|\brtu\b|cooler|freezer|refrigerat|compressor|condens|thermostat|a\/c\b|air condition/],
-  ["Outlets / wiring / breaker", /outlet|receptacle|breaker|wiring|wire|circuit|panel|gfci/],
-  ["Lights / fixtures", /light|fixture|bulb|ballast|lamp/],
-  ["Drywall / wall / paint", /drywall|sheetrock|wall|paint|patch/],
-  ["Pest", /pest|rodent|roach|insect/],
-  ["Cleaning", /clean/],
+const COMP_COLUMNS = ["21. Comp", "Comp"];
+const WO_RULES = [
+  // 57 of 57 sampled quotes in these two formats were BKR (Nov 3, 2026).
+  { entity: "BKR", test: (wo) => /^\d{7}-\d{8}$/.test(wo) || /^\d{8}$/.test(wo) },
 ];
 
 function readCsv(file) {
@@ -63,29 +43,32 @@ function readCsv(file) {
   return body.filter((r) => r.length > 1).map((r) => Object.fromEntries(head.map((h, i) => [h, r[i] ?? ""])));
 }
 
-const fmOf = (wo) => {
-  const w = wo.trim();
-  if (AMBIGUOUS.some((t) => t(w))) return null;
-  return FM_RULES.find((r) => r.test(w))?.fm ?? "Other FMs";
-};
+const known = new Set(ENTITIES.map((e) => e.code));
+function entityOf(q, compCol) {
+  if (compCol) {
+    const v = q[compCol].trim().toUpperCase();
+    return known.has(v) ? v : null;
+  }
+  return WO_RULES.find((r) => r.test(q["Task Name"].trim()))?.entity ?? null;
+}
 
-// The job is what the tech reported and the steps, not the parts list or the money lines.
-const scopeOf = (quote) => quote.toLowerCase().split(/\n\s*(incurred|labor|parts|total)\b/)[0];
-const jobOf = (quote) => JOB_RULES.find(([, re]) => re.test(scopeOf(quote)))?.[0] ?? "Other";
-
-const pct = (n, d) => (d ? `${Math.round((100 * n) / d)}%` : "-");
 const median = (xs) => {
   const s = xs.filter(Number.isFinite).sort((a, b) => a - b);
-  return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : NaN;
+  return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : null;
 };
+const share = (n, d) => (d ? Math.round((100 * n) / d) : null);
 
-const [allFile, tech2File] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const jsonAt = args.indexOf("--json");
+const jsonOut = jsonAt >= 0 ? args.splice(jsonAt, 2)[1] : null;
+const [allFile, tech2File] = args;
 if (!allFile || !tech2File) {
-  console.error("Usage: node scripts/client-profile.mjs <all-quotes.csv> <tech2-quotes.csv>");
+  console.error("Usage: node scripts/client-profile.mjs <all-quotes.csv> <tech2-quotes.csv> [--json out.json]");
   process.exit(1);
 }
 const all = readCsv(allFile);
 const tech2 = new Map(readCsv(tech2File).map((r) => [r["ClickUp task ID"], r]));
+const compCol = COMP_COLUMNS.find((c) => all.length && c in all[0]) ?? null;
 
 // How far the keyword job type can be trusted: agreement with the Tech 2 export's own labels.
 let agree = 0, compared = 0;
@@ -96,18 +79,12 @@ for (const q of all) {
   if (jobOf(q["Client Quote (text)"]) === t["Job type"]) agree++;
 }
 
-const cells = new Map(); // fm -> job -> stats
-let skipped = 0;
-for (const q of all) {
-  const fm = fmOf(q["Task Name"]);
-  if (!fm) { skipped++; continue; }
-  const t = tech2.get(q["Task ID"]);
-  const job = t && t["Job type"] !== "Other" ? t["Job type"] : jobOf(q["Client Quote (text)"]);
-  for (const key of [job, "All jobs"]) {
-    const byJob = cells.get(fm) ?? cells.set(fm, new Map()).get(fm);
-    const s = byJob.get(key) ?? byJob.set(key, { n: 0, t2: 0, t3: 0, reason: 0, canceled: 0, h2: [] }).get(key);
+const raw = new Map(); // group -> job -> counts
+function add(group, job, q, t) {
+  const byJob = raw.get(group) ?? raw.set(group, new Map()).get(group);
+  for (const key of [job, "*"]) {
+    const s = byJob.get(key) ?? byJob.set(key, { n: 0, t2: 0, t3: 0, reason: 0, h2: [] }).get(key);
     s.n++;
-    if (q.Status === "canceled/postponed") s.canceled++;
     if (t) {
       s.t2++;
       if (t["Tech 3+ billed"] === "Yes") s.t3++;
@@ -116,20 +93,43 @@ for (const q of all) {
     }
   }
 }
-
-console.log(`${all.length} quotes, ${tech2.size} with a Tech 2. Left out (FM format shared by several FMs): ${skipped}.`);
-console.log(`Keyword job type matches the Tech 2 export's label on ${pct(agree, compared)} of ${compared} quotes.\n`);
-
-const fms = [...cells.keys()].sort((a, b) => (a === "Other FMs") - (b === "Other FMs"));
-const jobs = [...cells.get(fms[0]).entries()].sort((a, b) => b[1].n - a[1].n).map(([j]) => j);
-const header = ["Job", ...fms.flatMap((f) => [`${f} quotes`, `${f} Tech 2`, `${f} Tech 3+`, `${f} reason given`, `${f} Tech 2 h`, `${f} canceled`])];
-console.log(header.join("\t"));
-for (const job of jobs) {
-  const cols = fms.flatMap((f) => {
-    const s = cells.get(f).get(job) ?? { n: 0, t2: 0, t3: 0, reason: 0, canceled: 0, h2: [] };
-    return [s.n, pct(s.t2, s.n), pct(s.t3, s.t2), pct(s.reason, s.t2), median(s.h2) || "-", s.canceled];
-  });
-  console.log([job, ...cols].join("\t"));
+let unassigned = 0;
+for (const q of all) {
+  const t = tech2.get(q["Task ID"]);
+  const job = t && t["Job type"] !== "Other" ? t["Job type"] : jobOf(q["Client Quote (text)"]);
+  add("everyone", job, q, t);
+  const e = entityOf(q, compCol);
+  if (e) add(e, job, q, t); else unassigned++;
 }
-console.log("\nCounts from invoiced and open quotes. An invoiced quote may have been revised before it was");
-console.log("accepted; the export keeps only the final version, so this shows what was accepted, not what was refused.");
+
+const rowOf = (s) => ({ n: s.n, t2: share(s.t2, s.n), t3: share(s.t3, s.t2), reason: share(s.reason, s.t2), t2h: median(s.h2) });
+const shape = (byJob) => ({
+  all: rowOf(byJob.get("*")),
+  jobs: Object.fromEntries([...byJob].filter(([k]) => k !== "*").map(([k, s]) => [k, rowOf(s)])),
+});
+const out = {
+  built: new Date().toISOString().slice(0, 10),
+  source: `${all.length} quotes, ${tech2.size} with a Tech 2; entity from ${compCol ? `the "${compCol}" column` : "work order format (BKR only)"}`,
+  everyone: shape(raw.get("everyone")),
+  entities: Object.fromEntries([...raw].filter(([g]) => g !== "everyone").map(([g, m]) => [g, shape(m)])),
+};
+
+console.log(`${out.source}. Quotes with no entity: ${unassigned}.`);
+console.log(`Keyword job type matches the Tech 2 export's label on ${share(agree, compared)}% of ${compared} quotes.\n`);
+const groups = ["everyone", ...Object.keys(out.entities)];
+console.log(["Job", ...groups.flatMap((g) => [`${g} quotes`, `${g} Tech 2`, `${g} reason given`])].join("\t"));
+const jobs = Object.entries(out.everyone.jobs).sort((a, b) => b[1].n - a[1].n).map(([j]) => j);
+for (const job of ["*", ...jobs]) {
+  const cols = groups.flatMap((g) => {
+    const h = g === "everyone" ? out.everyone : out.entities[g];
+    const r = job === "*" ? h.all : h.jobs[job];
+    return r ? [r.n, r.t2 == null ? "-" : `${r.t2}%`, r.reason == null ? "-" : `${r.reason}%`] : [0, "-", "-"];
+  });
+  console.log([job === "*" ? "All jobs" : job, ...cols].join("\t"));
+}
+console.log("\nAn invoiced quote may have been revised before it was accepted; the export keeps only the");
+console.log("final version, so this shows what was accepted, not what was refused.");
+if (jsonOut) {
+  fs.writeFileSync(jsonOut, JSON.stringify(out));
+  console.log(`\nWrote ${jsonOut} (${fs.statSync(jsonOut).size} bytes). Paste its contents into Vercel as ENTITY_HISTORY. Do not commit it.`);
+}

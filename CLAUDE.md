@@ -321,6 +321,23 @@ several FMs is left out rather than guessed. Job type comes from the Tech 2 expo
 it exists and from keywords otherwise; the script prints how often the two agree.
 It is not part of the check route and not a round.
 
+### Vol 2 in the check page (entity history and ClickUp import)
+
+The check page has an Entity dropdown (BKR, SFM, Alpha Fixers, Texas Pipe Master,
+RepairFected, EDS: the "21. Comp" field in ClickUp) and a history panel under the answer.
+The panel is worked out in code from `ENTITY_HISTORY` (`lib/history.js`), never by the
+model, and never changes the answer, so the eval is unaffected. The numbers are company
+data and the repository is public, so they live in Vercel, not in git.
+
+Without a Comp column in the export only BKR can be told apart (by work order format,
+57 of 57 sampled). The other entities show "no history yet" until an export with the
+Comp column is run through the script.
+
+`/api/clickup` imports one task by link or WO number with `CLICKUP_API_TOKEN`. It sends
+GET requests only and never reads the task description (work orders have carried payment
+details there). The owner's rule says ClickUp is read-only: this keeps to it, but confirm
+with the owner before turning the token on, since it is the first code that reads ClickUp.
+
 ### Two subsets will fail, by design
 
 These are not defects in the runner and not regressions. They record wanted
