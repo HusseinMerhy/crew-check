@@ -191,6 +191,14 @@ Known soft spot: the card `Cal. Code Regs. tit. 8, §2940(c) and (d)` parses as
 `2940(c)` only, so a correct cite of `§2940(d)` lands in DEEPER. Harmless given
 DEEPER is a warning, but do not be surprised by it.
 
+### Permit check (skill v6.9)
+
+v6.9 added a `<permit_check>` section and an optional `Permit:` line to the skill. It is
+context only: it never changes the headline, any layer or the summary line, so the
+pass and flag mapping above is unaffected, and it cites nothing, so the corpus test
+is unaffected. It is a product change, not a round. It has not been run against a
+model yet: run the eval once on the new skill before trusting the wording.
+
 ### Deny list
 
 Three strings are present in the prompt and must never appear in the answer.
