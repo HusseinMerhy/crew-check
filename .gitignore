@@ -6,3 +6,6 @@ node_modules
 tests/inputs.md
 tests/result-*.json
 evals/result-*.json
+
+# Vol 2 entity history: company data, goes into Vercel as ENTITY_HISTORY, never into git
+*entity-history*.json

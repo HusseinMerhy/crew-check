@@ -31,6 +31,7 @@ jobs:
       - run: node scripts/build-skill.mjs --check
       # The agentic loop's unit tests use a fake model: no network, no key, no API credit.
       - run: node tests/agentic.test.mjs
+      - run: node tests/vol2.test.mjs
       - run: npm run build
         env:
           # Dummy values. Nothing is read at build time today (every route is force-dynamic), so

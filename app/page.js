@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { embedQuote } from "../lib/embed";
+import { ENTITIES, lookup, MIN_QUOTES } from "../lib/history";
 
 const STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","PR"];
 
@@ -48,6 +49,41 @@ function headlineClass(h) {
   return "justified";
 }
 
+// Vol 2 history panel. Past practice from our own quotes, worked out in code, never by the model:
+// it sits beside the answer and never changes it.
+function HistoryPanel({ entity, quote, history }) {
+  const label = ENTITIES.find((e) => e.code === entity)?.label || entity;
+  let body;
+  if (!history) body = <div className="empty">Loading history...</div>;
+  else if (!history.ok) body = <div className="empty">{history.problem}</div>;
+  else {
+    const h = lookup(history.history, entity, quote);
+    const pct = (x) => (x == null ? "?" : `${x}%`);
+    if (!h.hasEntity) body = <div className="empty">No history for {label} yet: it needs a ClickUp export with the Comp column.</div>;
+    else if (!h.entity) body = <div className="empty">Fewer than {MIN_QUOTES} past {label} quotes for {h.job.toLowerCase()}: not enough to show a number.</div>;
+    else body = (
+      <>
+        <div className="answer-body">
+          {label} quoted a second tech on <b>{pct(h.entity.t2)}</b> of {h.entity.n.toLocaleString()} past {h.job.toLowerCase()} quotes
+          {h.everyone && <> (all entities: {pct(h.everyone.t2)} of {h.everyone.n.toLocaleString()})</>}.
+          {" "}A reason was written on {pct(h.entity.reason)} of those{h.entity.t2h != null && <>, and the typical Tech 2 time was {h.entity.t2h} h</>}.
+          {h.entity.t3 > 0 && <> A third tech was billed on {pct(h.entity.t3)} of them.</>}
+        </div>
+        <div className="card-meta" style={{ marginTop: 6 }}>Past practice, not a reason: it never replaces the answer above. Accepted quotes only, final versions.</div>
+      </>
+    );
+  }
+  return (
+    <div className="panel">
+      <div className="panel-header">
+        <div className="panel-title">{label} history</div>
+        <div className="panel-title">{history?.ok ? `Job: ${lookup(history.history, entity, quote).job}` : ""}</div>
+      </div>
+      <div className="panel-body">{body}</div>
+    </div>
+  );
+}
+
 function valueClass(v) {
   const s = v.toLowerCase();
   if (s.startsWith("yes")) return "yes";
@@ -62,9 +98,29 @@ export default function Home() {
   const [res, setRes] = useState(null);
 
   const [stage, setStage] = useState("");
+  const [entity, setEntity] = useState("");
+  const [history, setHistory] = useState(null);
+  const [taskRef, setTaskRef] = useState("");
+  const [imported, setImported] = useState(null);
+
+  // Read-only: fills the form from one ClickUp task. Nothing is sent back to ClickUp.
+  async function importTask() {
+    setImported({ busy: true });
+    try {
+      const r = await fetch(`/api/clickup?task=${encodeURIComponent(taskRef)}`);
+      const d = await r.json();
+      if (d.ok) {
+        if (d.quote) setQuote(d.quote);
+        if (STATES.includes(d.state)) setState(d.state);
+        if (ENTITIES.some((e) => e.code === d.entity)) setEntity(d.entity);
+      }
+      setImported(d);
+    } catch (e) { setImported({ ok: false, problem: "Could not reach the import." }); }
+  }
 
   async function check() {
     setBusy(true); setRes(null);
+    if (entity && !history) fetch("/api/history").then((r) => r.json()).then(setHistory).catch(() => setHistory({ ok: false, problem: "Could not load the history." }));
     let vector = null;
     try { setStage("Reading the quote's meaning (first time loads a small model)..."); vector = await embedQuote(quote); }
     catch (e) { vector = null; }
@@ -87,6 +143,21 @@ export default function Home() {
           <div className="panel-title">{quote.length} characters</div>
         </div>
         <div className="panel-body">
+          <div className="controls" style={{ marginTop: 0, marginBottom: 10 }}>
+            <label className="field-label" htmlFor="task" style={{ margin: 0 }}>From ClickUp</label>
+            <input id="task" value={taskRef} onChange={(e) => setTaskRef(e.target.value)} placeholder="Task link or WO number"
+              style={{ flex: 1, minWidth: 180 }} />
+            <button className="btn" onClick={importTask} disabled={!taskRef.trim() || imported?.busy}>
+              {imported?.busy ? "Importing..." : "Import"}
+            </button>
+          </div>
+          {imported && !imported.busy && (
+            <div className="stage">
+              {imported.ok
+                ? <>Imported {imported.task.name} ({imported.task.status}){imported.fm && <>, {imported.fm}</>}{!imported.quote && <>: this task has no Client Quote yet</>}. Check the text before pressing Check.</>
+                : imported.problem}
+            </div>
+          )}
           <label className="field-label" htmlFor="quote">Tech reported and required steps</label>
           <textarea id="quote" value={quote} onChange={(e) => setQuote(e.target.value)}
             placeholder={"Paste the Tech Reported line and the Required is to steps.\nUse test or made-up quotes only while the site has no passcode."} />
@@ -95,6 +166,11 @@ export default function Home() {
             <select id="state" value={state} onChange={(e) => setState(e.target.value)}>
               <option value="">Not given</option>
               {STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <label className="field-label" htmlFor="entity" style={{ margin: 0 }}>Entity</label>
+            <select id="entity" value={entity} onChange={(e) => setEntity(e.target.value)}>
+              <option value="">Not chosen</option>
+              {ENTITIES.map((e) => <option key={e.code} value={e.code}>{e.label}</option>)}
             </select>
             <button className="btn primary" onClick={check} disabled={busy || tooShort}>
               {busy ? "Checking..." : "Check this quote"}
@@ -143,6 +219,8 @@ export default function Home() {
               )}
             </div>
           </div>
+
+          {entity && <HistoryPanel entity={entity} quote={quote} history={history} />}
 
           <div className="panel">
             <div className="panel-header">

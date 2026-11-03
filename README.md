@@ -90,6 +90,10 @@ See `.env.example` for the same list with notes and no values.
 | `DATABASE_URL` | Secret | The Neon connection string, added by Vercel when the database is attached. Without it the app still answers, but keyword-only, with no past jobs and no log. |
 | `AGENTIC_RETRIEVAL` | Config | `on` lets `/api/check` run the agentic retrieval experiment for requests that ask for it (`node evals/run_eval.js <url> --agentic`). Unset means off. The screen never asks, so users get the fixed pipeline either way. |
 
+| `ENTITY_HISTORY` | Config | Vol 2: the per-entity crew history (JSON from `node scripts/client-profile.mjs ... --json`). Company data, so it lives here and not in git. Unset means the history panel says no history is loaded. |
+| `CLICKUP_API_TOKEN` | Secret | Vol 2: lets the check page import a quote from a ClickUp task link, **read only** (the code sends GET requests only). Unset means the import is off. |
+| `CLICKUP_TEAM_ID` | Config | Vol 2: the ClickUp workspace id, needed to import by WO number (WO-1234) instead of the task link. |
+
 After changing any setting: Deployments → **top row** → Redeploy. Never redeploy an older row (it puts old code live).
 
 ## Running the tests
