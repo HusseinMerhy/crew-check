@@ -109,10 +109,13 @@ export default function Home() {
     try {
       const r = await fetch(`/api/clickup?task=${encodeURIComponent(taskRef)}`);
       const d = await r.json();
+      // Every field comes from this task alone: a value ClickUp does not have is cleared, never
+      // left over from the previous import, so one quote is never checked with another's state.
       if (d.ok) {
-        if (d.quote) setQuote(d.quote);
-        if (STATES.includes(d.state)) setState(d.state);
-        if (ENTITIES.some((e) => e.code === d.entity)) setEntity(d.entity);
+        setQuote(d.quote || "");
+        setState(STATES.includes(d.state) ? d.state : "");
+        setEntity(ENTITIES.some((e) => e.code === d.entity) ? d.entity : "");
+        setRes(null);
       }
       setImported(d);
     } catch (e) { setImported({ ok: false, problem: "Could not reach the import." }); }
@@ -154,7 +157,10 @@ export default function Home() {
           {imported && !imported.busy && (
             <div className="stage">
               {imported.ok
-                ? <>Imported {imported.task.name} ({imported.task.status}){imported.fm && <>, {imported.fm}</>}{!imported.quote && <>: this task has no Client Quote yet</>}. Check the text before pressing Check.</>
+                ? <>Imported {imported.task.name} ({imported.task.status}){imported.fm && <>, {imported.fm}</>}{!imported.quote && <>: this task has no Client Quote yet</>}.
+                    {!STATES.includes(imported.state) && <> No store state in ClickUp: pick it below.</>}
+                    {!ENTITIES.some((e) => e.code === imported.entity) && <> No entity (Comp) in ClickUp: pick it below.</>}
+                    {" "}Check the text before pressing Check.</>
                 : imported.problem}
             </div>
           )}
