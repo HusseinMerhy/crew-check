@@ -5,7 +5,7 @@
 // have carried payment details there.
 //
 // Settings (Vercel): CLICKUP_API_TOKEN (required), CLICKUP_TEAM_ID (needed for WO-1234 style ids).
-import { parseTaskRef, fieldText } from "../../../lib/clickup";
+import { parseTaskRef, taskFields } from "../../../lib/clickup";
 export const dynamic = "force-dynamic";
 
 const API = "https://api.clickup.com/api/v2";
@@ -35,16 +35,13 @@ export async function GET(req) {
   if (r.status === 404) return Response.json({ ok: false, problem: "No ClickUp task with that id." }, { status: 404 });
   if (!r.ok) return Response.json({ ok: false, problem: `ClickUp answered ${r.status}.` }, { status: 502 });
 
-  const task = await r.json();
-  const quote = fieldText(task, "Client Quote") || fieldText(task, "Tech Quote");
+  const t = taskFields(await r.json());
   return Response.json({
     ok: true,
-    task: { id: task.id, name: task.name, url: task.url, status: task.status?.status || "" },
-    quote,
-    state: fieldText(task, "State").toUpperCase().slice(0, 2),
-    entity: fieldText(task, "21. Comp").toUpperCase(),
-    fm: fieldText(task, "22. FM"),
-    trade: fieldText(task, "Trade"),
-    store: fieldText(task, "Store"),
+    task: { id: t.id, name: t.name, url: t.url, status: t.status },
+    quote: t.quote,
+    state: t.state,
+    entity: t.entity,
+    fm: t.fm,
   });
 }

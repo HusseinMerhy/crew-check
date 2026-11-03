@@ -30,7 +30,10 @@ export default function RootLayout({ children }) {
             <div className="top-title">OSHA crew check</div>
             <div className="top-sub">Second-tech justification</div>
           </div>
-          <div className="pill">Proof of concept</div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <a className="pill" href="/">Check</a>
+            <a className="pill" href="/queue">Daily queue</a>
+          </div>
         </div>
         {children}
       </body>
