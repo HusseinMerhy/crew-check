@@ -1,7 +1,7 @@
 ---
 name: crew-size-justification
 description: Explain why a quote has a second technician (Tech 2) in 4 separate layers: OSHA requirement, safety hazard, practical need, other requirement. Use when a dispatcher pastes a quote and asks whether Tech 2 is justified or whether it passes OSHA.
-version: 6.9 (Oct 27, 2026). Adds the permit check: a context line saying when this kind of work often needs a city permit. It never changes the headline or any layer. 6.8 (Oct 19, 2026) split the state-plan State line in two: a plan state that adopts the federal standards by reference now says it enforces them, instead of hedging that its rules are unknown. 6.7 added the always-on State line. 6.6 added ladder-in-traffic to Layer 2 (1910.23(c)(7), verified on osha.gov Oct 16). Replaces v5 in ClickUp. Not included until audited: v5's FM-rules section (1910.333, NFPA 70E, 1910.23(c)).
+version: 6.10 (Nov 3, 2026). Setting or placing an item is a lift (Layer 2, needs a weight), not a two-hands action. 6.9 (Oct 27, 2026) added the permit check: a context line saying when this kind of work often needs a city permit. It never changes the headline or any layer. 6.8 (Oct 19, 2026) split the state-plan State line in two: a plan state that adopts the federal standards by reference now says it enforces them, instead of hedging that its rules are unknown. 6.7 added the always-on State line. 6.6 added ladder-in-traffic to Layer 2 (1910.23(c)(7), verified on osha.gov Oct 16). Replaces v5 in ClickUp. Not included until audited: v5's FM-rules section (1910.333, NFPA 70E, 1910.23(c)).
 ---
 
 # Crew Size Justification
@@ -42,7 +42,7 @@ Never write a reason for a second person the input says was not there.
 Look for 3 kinds of clues in the steps:
 - An ACTIVITY or PLACE (weld, torch, enter the vault, live high-voltage line, roof with a safety monitor) -> Layer 1, OSHA
 - A MEASUREMENT: a number with a unit (lb, kg, ft, m, in) -> Layer 2, Safety
-- A TWO-HANDS ACTION verb (hold, lift and align, dismount or remount the door, hang, set in place, release spring tension, feed and pull wire, guide a crane load, control the hydro jet hose) -> Layer 3, Practical
+- A TWO-HANDS ACTION verb (hold, lift and align, dismount or remount the door, hang, hold in place while it is fastened, release spring tension, feed and pull wire, guide a crane load, control the hydro jet hose) -> Layer 3, Practical
 Words without numbers ("heavy", "high", "large") are hints only: they make a layer "Possible", never "Yes".
 Never estimate a weight or height from a product name, a size or a description. If it is not stated as a number, ask for it.
 </how_to_read_the_quote>
@@ -85,6 +85,7 @@ Answers: Yes (hazard + the stated number) / Possible (the hint word is there, no
 <layer_3_practical>
 Question: does a step physically need two people?
 Yes only when a step names a two-hands action: holding an item in place while it is fastened, lifting and aligning, dismounting or rehanging a door, releasing or setting spring tension, feeding and pulling wire through a long conduit run, guiding a crane or hoist load, controlling a hydro jet hose while the other operates, holding a board-up sheet while it is secured, installing a sheet, panel, beam, board or pipe with a STATED length of 10 ft or more (one holds, one fastens).
+Moving, setting or placing an item (set the unit on the stand, place the new heater, carry it in) is a lift, not a two-hands action: it belongs to Layer 2 and needs a stated weight. It is Layer 3 only when the step says one person holds or aligns the item while the other fastens it.
 Not a reason: "faster with two", "standard crew", "vendor always sends two", company practice. One-person by default: snaking, lockout and de-energized electrical work, toilet remove and reset, bulb or tube changes at reachable height, cleaning, coil cleaning.
 Answers: Yes (quote the step) / No.
 </layer_3_practical>
