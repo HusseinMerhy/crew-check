@@ -62,6 +62,8 @@ If either is missing, the app still answers from keyword search alone and the li
 | `lib/model.js` | Reads `CLAUDE_MODEL`; only accepts `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5`. |
 | `app/page.js` | The screen (runs in the browser). Builds the meaning vector, sends the quote to `/api/check`, shows the answer, the cards used and the similar past jobs. |
 | `app/api/health/route.js` | One tiny Claude call to prove the key and model work. |
+| `app/eval/page.js` | **The eval, run from a browser** at `/eval`. Runs the eval cases against this site (fixed pipeline and agentic search), sends the meaning vector like a real user, and shows the KPI table and the agentic decision rule. Uses the site's own key: every check spends credit, and it asks first. Holdout results show as totals only. |
+| `lib/embed.js` | Builds the quote's meaning vector in the browser. Shared by the check page and `/eval`, so the eval sends exactly what a user's browser sends. |
 | `middleware.js` | The lock. If `SITE_PASSCODE` is set, every page and every `/api/*` route asks for it. If not set, the site is open. The compare is constant-time over SHA-256 digests, so the response time does not leak how much of a guess was right. |
 | `tests/run.mjs` | The 16-case test. Scores headline type, OSHA field, State line, no dollars, no em dashes. The test quotes are real customer text and are kept out of GitHub (`tests/inputs.md` is in `.gitignore`). |
 | `tests/agentic.test.mjs` | Unit tests for the agentic loop with a fake model: the search cap, the fallbacks, the message shapes. No network and no API credit: `node tests/agentic.test.mjs`. CI runs it. |
@@ -103,6 +105,8 @@ The lock covers `/api/*` as well as the pages, so against a locked site set `CRE
 `tests/inputs.md` holds the 16 quotes and is **not in git**: they are real customer text. A fresh clone therefore cannot run the suite, and the script says so and stops rather than failing with a confusing file error. Each run also spends real API credit, 16 questions' worth.
 
 That is why continuous integration (`.github/workflows/ci.yml`) does not run the suite. It runs `npm ci` and `npm run build`, which proves the code compiles and every route and the middleware bundle. Answer quality is checked by hand against a deployment.
+
+The eval in `evals/` (25 cases plus a holdout, see CLAUDE.md) runs either from a terminal, `node evals/run_eval.js`, or from a browser at `/eval` on the deployed site. The browser way needs no Node and no API key on your machine, and it tests the keyword plus meaning search that users get.
 
 ## Test results (Oct 16, 2026, Haiku)
 
