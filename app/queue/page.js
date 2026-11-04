@@ -1,18 +1,46 @@
 "use client";
 // Vol 2: the daily automatic check's results. Each ClickUp quote waiting for approval is checked
 // once a day (and again if its quote text changes). Read only: nothing here writes to ClickUp.
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { parseAnswer, toneOf as tone, valueClass } from "../../lib/answer";
 
-function headClass(h) {
-  if (/^OSHA requires/i.test(h || "")) return "required";
-  if (/doesn.t show a reason/i.test(h || "")) return "none";
-  return "justified";
+// Same tones as the check page; the queue only needs the short class names.
+const CLS = { sig: "sig", warn: "warn", tape: "tape", ok: "ok" };
+const toneOf = (h) => { const t = tone(h || ""); return { cls: CLS[t.tone], label: t.label }; };
+
+const FILTERS = [
+  { key: "all", label: "All" },
+  { key: "tape", label: "Needs a reason" },
+  { key: "ok", label: "Justified" },
+  { key: "sig", label: "OSHA" },
+  { key: "failed", label: "Failed" },
+];
+
+// The stored answer, drawn like the check page's verdict card.
+function Answer({ text }) {
+  const a = parseAnswer(text);
+  if (!a.ok) return <div className="prose">{text}</div>;
+  return (
+    <>
+      <h3>{a.headline}</h3>
+      {a.verdicts.length > 0 && (
+        <div className="facts">
+          {a.verdicts.map((v, i) => <div className="fact" key={i}><div className="lbl">{v.label}</div><div className={`v ${valueClass(v.value)}`}>{v.value}</div></div>)}
+        </div>
+      )}
+      {a.body && <div className="prose">{a.body}</div>}
+      {a.worth && <div className="attn"><b>Worth checking:</b> {a.worth}</div>}
+      {a.permit && <div className="note warn"><b>Permit:</b> {a.permit}</div>}
+      {a.state && <div className="note"><b>State:</b> {a.state}</div>}
+    </>
+  );
 }
 
 export default function Queue() {
   const [data, setData] = useState(null);
-  const [open, setOpen] = useState(null);
   const [running, setRunning] = useState(null);
+  const [open, setOpen] = useState(null);
+  const [filter, setFilter] = useState("all");
 
   const load = () => fetch("/api/clickup/queue").then((r) => r.json()).then(setData).catch(() => setData({ ok: false, problem: "Could not load the results." }));
   useEffect(() => { load(); }, []);
@@ -20,66 +48,102 @@ export default function Queue() {
   async function runNow() {
     if (!confirm("Check the waiting ClickUp quotes now? Each quote checked spends API credit (up to 20 per run).")) return;
     setRunning({ busy: true });
-    try {
-      const r = await fetch("/api/clickup/sync?manual=1");
-      setRunning(await r.json());
-    } catch { setRunning({ ok: false, problem: "Could not reach the check." }); }
+    try { setRunning(await (await fetch("/api/clickup/sync?manual=1")).json()); }
+    catch { setRunning({ ok: false, problem: "Could not reach the check." }); }
     load();
   }
 
   const rows = data?.rows || [];
+  const keyOf = (r) => (r.ok ? toneOf(r.headline).cls : "failed");
+  const counts = useMemo(() => rows.reduce((c, r) => ({ ...c, [keyOf(r)]: (c[keyOf(r)] || 0) + 1 }), {}), [rows]);
+  const shown = filter === "all" ? rows : rows.filter((r) => keyOf(r) === filter);
+  const sel = rows.find((r) => r.task_id === open);
+
   return (
-    <main>
-      <div className="panel">
-        <div className="panel-header">
-          <div className="panel-title">Automatic check</div>
-          <div className="panel-title">{data?.auto ? "Runs once a day" : "Daily run is off (CRON_SECRET not set)"}</div>
+    <>
+      <div className="page-head">
+        <div>
+          <div className="eyebrow">Quotes</div>
+          <h1>Daily queue</h1>
+          <p>Quotes waiting in ClickUp are checked once a day, read only, newest first. A quote is checked again only if its text changes.</p>
         </div>
-        <div className="panel-body">
-          <div className="answer-body">
-            Quotes waiting in ClickUp are checked once a day, read only, and listed here newest first.
-            A quote is checked again only if its text changes. Each check is the same as the main page, with keyword search.
+        <div className="act">
+          <button className="btn" onClick={load}>Refresh</button>
+          {data?.manual && <button className="btn pri" onClick={runNow} disabled={running?.busy}>{running?.busy ? <><span className="spin" />Checking</> : "Run check now"}</button>}
+        </div>
+      </div>
+
+      {data && !data.auto && <div className="attn"><b>The daily run is off.</b> Add CRON_SECRET in Vercel and redeploy to turn it on.</div>}
+      {running && !running.busy && (running.ok
+        ? <div className="lint ok">Checked {running.checked}, failed {running.failed}, unchanged {running.unchanged}, no quote text {running.no_quote}{running.left_for_next_run ? ". More are waiting for the next run." : "."}</div>
+        : <div className="lint bad">{running.problem}</div>)}
+      {data && !data.ok && <div className="lint bad">{data.problem}</div>}
+
+      <div className="grid g4">
+        <div className="card tile"><div className="lbl">Checked</div><div className="val">{rows.length}</div><div className="sub">quotes in the list</div></div>
+        <div className="card tile focus"><div className="lbl">Needs a reason</div><div className="val">{counts.tape || 0}</div><div className="sub">no reason for the second tech</div></div>
+        <div className="card tile"><div className="lbl">Justified</div><div className="val">{(counts.ok || 0) + (counts.sig || 0)}</div><div className="sub">{counts.sig || 0} of them by an OSHA rule</div></div>
+        <div className="card tile"><div className="lbl">Check one fact</div><div className="val">{counts.warn || 0}</div><div className="sub">OSHA may apply: one fact decides</div></div>
+      </div>
+
+      <div className="card">
+        <div className="hd">
+          <h3>Results</h3>
+          <div className="row">
+            {FILTERS.map((f) => (
+              <button key={f.key} className={`btn sm ${filter === f.key ? "pri" : "ghost"}`} onClick={() => setFilter(f.key)}>
+                {f.label}{f.key !== "all" && counts[f.key] ? ` ${counts[f.key]}` : ""}
+              </button>
+            ))}
           </div>
-          <div className="controls">
-            <button className="btn" onClick={load}>Refresh</button>
-            {data?.manual && (
-              <button className="btn primary" onClick={runNow} disabled={running?.busy}>{running?.busy ? "Checking..." : "Run now"}</button>
-            )}
-          </div>
-          {running && !running.busy && (
-            <div className="stage">
-              {running.ok
-                ? `Checked ${running.checked}, failed ${running.failed}, unchanged ${running.unchanged}, no quote text ${running.no_quote}${running.left_for_next_run ? ", more waiting for the next run" : ""}.`
-                : running.problem}
-            </div>
+        </div>
+        <div className="tbl-wrap">
+          {!data && <div className="empty"><span className="spin" /></div>}
+          {data?.ok && rows.length === 0 && <div className="empty">Nothing checked yet. The first daily run fills this list.</div>}
+          {shown.length > 0 && (
+            <table>
+              <thead><tr><th>Work order</th><th>Entity</th><th>Client</th><th>State</th><th>Verdict</th><th>Checked</th></tr></thead>
+              <tbody>
+                {shown.map((r) => {
+                  const t = toneOf(r.headline);
+                  return (
+                    <tr key={r.task_id} className="click" onClick={() => setOpen(r.task_id)}>
+                      <td className="mono">{r.task_name}</td>
+                      <td>{r.entity || <span className="muted">-</span>}</td>
+                      <td>{r.fm || <span className="muted">-</span>}</td>
+                      <td>{r.state || <span className="muted">-</span>}</td>
+                      <td>{r.ok ? <span className={`pill ${t.cls}`}><i />{t.label}</span> : <span className="pill close"><i />Failed</span>}</td>
+                      <td className="muted small num">{new Date(r.checked_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
         </div>
       </div>
 
-      {data && !data.ok && <div className="panel error"><div className="panel-body">{data.problem}</div></div>}
-
-      <div className="panel">
-        <div className="panel-header">
-          <div className="panel-title">Results</div>
-          <div className="panel-title">{rows.length} quotes</div>
-        </div>
-        <div className="panel-body">
-          {data?.ok && rows.length === 0 && <div className="empty">Nothing checked yet. The first daily run fills this list.</div>}
-          {rows.map((r) => (
-            <div className="card-row" key={r.task_id} style={{ cursor: "pointer" }} onClick={() => setOpen(open === r.task_id ? null : r.task_id)}>
-              <span className="card-title">{r.task_url ? <a href={r.task_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{r.task_name}</a> : r.task_name}</span>
-              <span className="card-meta" style={{ marginLeft: 7 }}>
-                {[r.entity, r.fm, r.state, r.status, new Date(r.checked_at).toLocaleString()].filter(Boolean).join(" · ")}
-              </span>
-              {r.ok
-                ? <div className={`headline ${headClass(r.headline)}`} style={{ fontSize: 14, marginTop: 4 }}>{r.headline}</div>
-                : <div className="card-meta">Check failed: {r.problem}</div>}
-              {r.history && <div className="card-meta">{r.history}</div>}
-              {open === r.task_id && r.answer && <div className="answer-body" style={{ marginTop: 6 }}>{r.answer}</div>}
+      <div className={`scrim${sel ? " show" : ""}`} onClick={() => setOpen(null)} />
+      <aside className={`drawer${sel ? " show" : ""}`} aria-hidden={!sel}>
+        {sel && (
+          <>
+            <div className="dh">
+              <div>
+                <div className="eyebrow">{[sel.entity, sel.fm, sel.state, sel.status].filter(Boolean).join(" · ")}</div>
+                <h2 className="mono" style={{ fontSize: 18 }}>{sel.task_name}</h2>
+              </div>
+              <button className="x" aria-label="Close" onClick={() => setOpen(null)}><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
             </div>
-          ))}
-        </div>
-      </div>
-    </main>
+            <div className="db">
+              {sel.ok
+                ? <Answer text={sel.answer} />
+                : <div className="lint bad">Check failed: {sel.problem}. It is tried again on the next run.</div>}
+              {sel.history && <div className="note sig"><b>History:</b> {sel.history}</div>}
+              {sel.task_url && <a className="btn" href={sel.task_url} target="_blank" rel="noreferrer">Open in ClickUp</a>}
+            </div>
+          </>
+        )}
+      </aside>
+    </>
   );
 }

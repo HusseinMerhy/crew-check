@@ -1,297 +1,284 @@
 "use client";
+// Check a quote: everything on one screen. The quote on the left (import from ClickUp, or paste),
+// the answer on the right: the verdict, the entity's history, and the rule cards behind it.
 import { useState } from "react";
 import { embedQuote } from "../lib/embed";
 import { ENTITIES, lookup, MIN_QUOTES } from "../lib/history";
+import { parseAnswer, toneOf, valueClass } from "../lib/answer";
 
 const STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","PR"];
 
-// The bot answers in plain text, and the line a dispatcher actually scans is the summary:
-//   OSHA: ... | Safety: ... | Two-person step: ...
-// Pull that line, the State line and the "Worth checking" note out of the paragraph so each can
-// be shown on its own. Nothing here is required to succeed: when the shape is not found, ok is
-// false and the caller prints the answer unchanged, so a wording change in the skill can soften
-// the layout but can never blank the screen.
-function parseAnswer(text) {
-  const lines = String(text || "").split("\n");
-  const oshaIdx = lines.findIndex((l) => l.trim().startsWith("OSHA:"));
-  const stateIdx = lines.findIndex((l) => l.trim().startsWith("State:"));
-  const worthIdx = lines.findIndex((l) => /^worth checking:/i.test(l.trim()));
+const ICON = {
+  shield: <svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z" /><path d="M9 12l2 2 4-4" /></svg>,
+  help: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 2-2.5 2-2.5 4M12 17h.01" /></svg>,
+  alert: <svg viewBox="0 0 24 24"><path d="M12 3l10 18H2z" /><path d="M12 10v4M12 18h.01" /></svg>,
+  check: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M8 12l3 3 5-6" /></svg>,
+  download: <svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" /></svg>,
+};
 
-  const verdicts = [];
-  if (oshaIdx >= 0) {
-    for (const part of lines[oshaIdx].split("|")) {
-      const seg = part.trim();
-      const at = seg.indexOf(":");
-      if (at < 0) continue;
-      verdicts.push({ label: seg.slice(0, at).trim(), value: seg.slice(at + 1).trim() });
-    }
+function Verdict({ res }) {
+  const a = parseAnswer(res.answer);
+  if (!a.ok) {
+    // A lone-worker answer carries no summary line at all. Print it exactly as written.
+    return <div className="card"><div className="bd"><div className="prose">{res.answer}</div></div></div>;
   }
-  // The summary line is only lifted out of the body once it has produced the three fields the
-  // tiles need. Fewer than that and it stays in the body as written: a line is never dropped
-  // from the screen just because it did not parse.
-  const tiled = verdicts.length >= 3;
-
-  const lifted = new Set([0, tiled ? oshaIdx : -1, stateIdx, worthIdx].filter((i) => i >= 0));
-  return {
-    ok: oshaIdx >= 0 || stateIdx >= 0,
-    headline: (lines[0] || "").trim(),
-    verdicts: tiled ? verdicts : [],
-    body: lines.filter((_, i) => !lifted.has(i)).join("\n").trim(),
-    state: stateIdx >= 0 ? lines[stateIdx].trim() : "",
-    worth: worthIdx >= 0 ? lines[worthIdx].trim().replace(/^worth checking:\s*/i, "") : "",
-  };
-}
-
-// Lime for a rule that requires it, teal for the judgement calls, plain grey for no reason found.
-function headlineClass(h) {
-  if (/^OSHA requires/i.test(h)) return "required";
-  if (/doesn.t show a reason/i.test(h)) return "none";
-  return "justified";
-}
-
-// Vol 2 history panel. Past practice from our own quotes, worked out in code, never by the model:
-// it sits beside the answer and never changes it.
-function HistoryPanel({ entity, quote, history }) {
-  const label = ENTITIES.find((e) => e.code === entity)?.label || entity;
-  let body;
-  if (!history) body = <div className="empty">Loading history...</div>;
-  else if (!history.ok) body = <div className="empty">{history.problem}</div>;
-  else {
-    const h = lookup(history.history, entity, quote);
-    const pct = (x) => (x == null ? "?" : `${x}%`);
-    if (!h.hasEntity) body = <div className="empty">No history for {label} yet: it needs a ClickUp export with the Comp column.</div>;
-    else if (!h.entity) body = <div className="empty">Fewer than {MIN_QUOTES} past {label} quotes for {h.job.toLowerCase()}: not enough to show a number.</div>;
-    else body = (
-      <>
-        <div className="answer-body">
-          {label} quoted a second tech on <b>{pct(h.entity.t2)}</b> of {h.entity.n.toLocaleString()} past {h.job.toLowerCase()} quotes
-          {h.everyone && <> (all entities: {pct(h.everyone.t2)} of {h.everyone.n.toLocaleString()})</>}.
-          {" "}A reason was written on {pct(h.entity.reason)} of those{h.entity.t2h != null && <>, and the typical Tech 2 time was {h.entity.t2h} h</>}.
-          {h.entity.t3 > 0 && <> A third tech was billed on {pct(h.entity.t3)} of them.</>}
-        </div>
-        <div className="card-meta" style={{ marginTop: 6 }}>Past practice, not a reason: it never replaces the answer above. Accepted quotes only, final versions.</div>
-      </>
-    );
-  }
+  const t = toneOf(a.headline);
   return (
-    <div className="panel">
-      <div className="panel-header">
-        <div className="panel-title">{label} history</div>
-        <div className="panel-title">{history?.ok ? `Job: ${lookup(history.history, entity, quote).job}` : ""}</div>
+    <div className="card">
+      <div className="bd stack">
+        <div className={`verdict-head tone-${t.tone}`}>
+          <div className="badge">{ICON[t.icon]}</div>
+          <div>
+            <div className="eyebrow">{t.label}{res.state?.code ? ` · ${res.state.code}` : ""}</div>
+            <h2>{a.headline}</h2>
+          </div>
+        </div>
+        {a.verdicts.length > 0 && (
+          <div className="facts">
+            {a.verdicts.map((v, i) => (
+              <div className="fact" key={`${v.label}-${i}`}>
+                <div className="lbl">{v.label}</div>
+                <div className={`v ${valueClass(v.value)}`}>{v.value}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        {a.body && <div className="prose">{a.body}</div>}
+        {a.worth && <div className={t.tone === "tape" ? "attn" : "note sig"}><b>Worth checking:</b> {a.worth}</div>}
+        {a.permit && <div className="note warn"><b>Permit:</b> {a.permit}</div>}
+        {a.state && <div className="note"><b>State:</b> {a.state}</div>}
       </div>
-      <div className="panel-body">{body}</div>
     </div>
   );
 }
 
-function valueClass(v) {
-  const s = v.toLowerCase();
-  if (s.startsWith("yes")) return "yes";
-  if (s.includes("need")) return "need";
-  return "no";
+// Past practice from our own quotes, worked out in code, never by the model: it sits beside the
+// answer and never changes it.
+function History({ entity, quote, history }) {
+  const label = ENTITIES.find((e) => e.code === entity)?.label || entity;
+  const h = history?.ok ? lookup(history.history, entity, quote) : null;
+  let body;
+  if (!history) body = <div className="row muted"><span className="spin" /> Loading history...</div>;
+  else if (!history.ok) body = <div className="muted">{history.problem}</div>;
+  else if (!h.hasEntity) body = <div className="muted">No history for {label} yet.</div>;
+  else if (!h.entity) body = <div className="muted">Fewer than {MIN_QUOTES} past {label} quotes for {h.job.toLowerCase()}: not enough to show a number.</div>;
+  else body = (
+    <div className="stack">
+      <div className="cmp">
+        <div className="r me"><span>{label}</span><div className="trk"><div className="fill" style={{ width: `${h.entity.t2}%` }} /></div><b className="num">{h.entity.t2}%</b></div>
+        {h.everyone && <div className="r"><span className="muted">All entities</span><div className="trk"><div className="fill" style={{ width: `${h.everyone.t2}%` }} /></div><span className="num muted">{h.everyone.t2}%</span></div>}
+      </div>
+      <dl className="kv">
+        <dt>Based on</dt><dd className="num">{h.entity.n.toLocaleString()} past {h.job.toLowerCase()} quotes</dd>
+        <dt>Reason written</dt><dd className="num">{h.entity.reason ?? "?"}% of those with a Tech 2</dd>
+        {h.entity.t2h != null && <><dt>Typical Tech 2</dt><dd className="num">{h.entity.t2h} h</dd></>}
+        {h.entity.t3 > 0 && <><dt>Third tech</dt><dd className="num">{h.entity.t3}% of them</dd></>}
+      </dl>
+      <div className="small muted">Past practice, not a reason: it never replaces the answer. Accepted quotes only, final versions.</div>
+    </div>
+  );
+  return (
+    <div className="card">
+      <div className="hd"><h3>{label} history</h3>{h && <span className="pill sig">{h.job}</span>}</div>
+      <div className="bd">{body}</div>
+    </div>
+  );
+}
+
+function RuleCards({ cards }) {
+  return (
+    <div className="card">
+      <div className="hd"><h3>Rule cards used</h3><span className="muted small">{cards.length} found</span></div>
+      <div className="bd tight list">
+        {cards.length === 0 && <div className="empty">No rule card matched this quote.</div>}
+        {/* keyed by position as well as citation: a federal and a state card can carry the same
+            citation, and React drops a row when two keys match */}
+        {cards.map((c, i) => (
+          <div className="li" key={`${c.citation}-${i}`}>
+            <div style={{ minWidth: 0 }}>
+              <div className="ttl">{c.title}</div>
+              <div className="sub">
+                {c.layer} · {c.state}
+                {c.matched.length > 0 && <> · words: {c.matched.join(", ")}</>}
+                {c.similarity != null && <> · meaning match {c.similarity.toFixed(2)}</>}
+              </div>
+            </div>
+            <span className="sp" />
+            <span className="chip">{c.citation}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SimilarJobs({ res }) {
+  if (res.similar_hidden) return <div className="note">Similar past jobs were used but are hidden: turn the site passcode on to show them.</div>;
+  if (!res.similar?.length) return null;
+  return (
+    <div className="card">
+      <div className="hd"><h3>Similar past jobs</h3><span className="muted small">Context only, prices and names removed</span></div>
+      <div className="bd tight list">
+        {res.similar.map((s, i) => (
+          <div className="li" key={i}>
+            <div style={{ minWidth: 0 }}>
+              <div className="ttl">{s.job || s.category}</div>
+              <div className="sub">Tech 1 {s.tech1_h ?? "?"} h · Tech 2 {s.tech2_h ?? "?"} h · meaning match {s.similarity.toFixed(2)}</div>
+              <div className="small" style={{ marginTop: 6 }}>{s.tech_reported}</div>
+              <div className="sub">Reason written: {s.reason_found}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export default function Home() {
   const [quote, setQuote] = useState("");
   const [state, setState] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [res, setRes] = useState(null);
-
-  const [stage, setStage] = useState("");
   const [entity, setEntity] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [stage, setStage] = useState("");
+  const [res, setRes] = useState(null);
   const [history, setHistory] = useState(null);
   const [taskRef, setTaskRef] = useState("");
   const [imported, setImported] = useState(null);
 
   // Read-only: fills the form from one ClickUp task. Nothing is sent back to ClickUp.
-  async function importTask() {
+  // Every field comes from this task alone: a value ClickUp does not have is cleared, never left
+  // over from the previous import, so one quote is never checked with another's state.
+  async function importTask(e) {
+    e?.preventDefault();
+    if (!taskRef.trim()) return;
     setImported({ busy: true });
     try {
       const r = await fetch(`/api/clickup?task=${encodeURIComponent(taskRef)}`);
       const d = await r.json();
       if (d.ok) {
-        if (d.quote) setQuote(d.quote);
-        if (STATES.includes(d.state)) setState(d.state);
-        if (ENTITIES.some((e) => e.code === d.entity)) setEntity(d.entity);
+        setQuote(d.quote || "");
+        setState(STATES.includes(d.state) ? d.state : "");
+        setEntity(ENTITIES.some((x) => x.code === d.entity) ? d.entity : "");
+        setRes(null);
       }
       setImported(d);
-    } catch (e) { setImported({ ok: false, problem: "Could not reach the import." }); }
+    } catch { setImported({ ok: false, problem: "Could not reach the import." }); }
   }
 
   async function check() {
     setBusy(true); setRes(null);
     if (entity && !history) fetch("/api/history").then((r) => r.json()).then(setHistory).catch(() => setHistory({ ok: false, problem: "Could not load the history." }));
     let vector = null;
-    try { setStage("Reading the quote's meaning (first time loads a small model)..."); vector = await embedQuote(quote); }
-    catch (e) { vector = null; }
-    setStage("Checking the rules...");
+    try { setStage("Reading the quote's meaning (the first check loads a small model)"); vector = await embedQuote(quote); }
+    catch { vector = null; }
+    setStage("Checking the rules");
     try {
       const r = await fetch("/api/check", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quote, state, vector }) });
       setRes(await r.json());
-    } catch (e) { setRes({ ok: false, problem: "network" }); }
+    } catch { setRes({ ok: false, problem: "Could not reach the checker." }); }
     setBusy(false); setStage("");
   }
 
   const tooShort = quote.trim().length < 20;
-  const answer = res && res.ok ? parseAnswer(res.answer) : null;
+  const missing = imported?.ok ? [!STATES.includes(imported.state) && "store state", !ENTITIES.some((x) => x.code === imported.entity) && "entity"].filter(Boolean) : [];
 
   return (
-    <main>
-      <div className="panel">
-        <div className="panel-header">
-          <div className="panel-title">Quote</div>
-          <div className="panel-title">{quote.length} characters</div>
-        </div>
-        <div className="panel-body">
-          <div className="controls" style={{ marginTop: 0, marginBottom: 10 }}>
-            <label className="field-label" htmlFor="task" style={{ margin: 0 }}>From ClickUp</label>
-            <input id="task" value={taskRef} onChange={(e) => setTaskRef(e.target.value)} placeholder="Task link or WO number"
-              style={{ flex: 1, minWidth: 180 }} />
-            <button className="btn" onClick={importTask} disabled={!taskRef.trim() || imported?.busy}>
-              {imported?.busy ? "Importing..." : "Import"}
-            </button>
-          </div>
-          {imported && !imported.busy && (
-            <div className="stage">
-              {imported.ok
-                ? <>Imported {imported.task.name} ({imported.task.status}){imported.fm && <>, {imported.fm}</>}{!imported.quote && <>: this task has no Client Quote yet</>}. Check the text before pressing Check.</>
-                : imported.problem}
-            </div>
-          )}
-          <label className="field-label" htmlFor="quote">Tech reported and required steps</label>
-          <textarea id="quote" value={quote} onChange={(e) => setQuote(e.target.value)}
-            placeholder={"Paste the Tech Reported line and the Required is to steps.\nUse test or made-up quotes only while the site has no passcode."} />
-          <div className="controls">
-            <label className="field-label" htmlFor="state" style={{ margin: 0 }}>Store state</label>
-            <select id="state" value={state} onChange={(e) => setState(e.target.value)}>
-              <option value="">Not given</option>
-              {STATES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <label className="field-label" htmlFor="entity" style={{ margin: 0 }}>Entity</label>
-            <select id="entity" value={entity} onChange={(e) => setEntity(e.target.value)}>
-              <option value="">Not chosen</option>
-              {ENTITIES.map((e) => <option key={e.code} value={e.code}>{e.label}</option>)}
-            </select>
-            <button className="btn primary" onClick={check} disabled={busy || tooShort}>
-              {busy ? "Checking..." : "Check this quote"}
-            </button>
-          </div>
-          {busy && <div className="stage">{stage}</div>}
-          {!busy && tooShort && quote.length > 0 && <div className="stage">Paste at least 20 characters of the quote.</div>}
+    <>
+      <div className="page-head">
+        <div>
+          <div className="eyebrow">Quotes</div>
+          <h1>Check a quote</h1>
+          <p>Does the second tech hold up, under OSHA, for safety or because a step needs two people? And what does this entity usually get accepted?</p>
         </div>
       </div>
 
-      {res && !res.ok && (
-        <div className="panel error">
-          <div className="panel-body">Error: {res.problem} {res.detail || ""}</div>
-        </div>
-      )}
-
-      {res && res.ok && (
-        <>
-          <div className="panel">
-            <div className="panel-header">
-              <div className="panel-title">Answer</div>
-              <div className="panel-title">{res.state?.code || "No state"}</div>
-            </div>
-            <div className="panel-body">
-              {answer.ok ? (
-                <>
-                  <div className={`headline ${headlineClass(answer.headline)}`}>{answer.headline}</div>
-                  {answer.verdicts.length > 0 && (
-                    <div className="verdicts">
-                      {answer.verdicts.map((v, i) => (
-                        <div className="verdict" key={`${v.label}-${i}`}>
-                          <div className="verdict-label">{v.label}</div>
-                          <div className={`verdict-value ${valueClass(v.value)}`}>{v.value}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {answer.body && <div className="answer-body">{answer.body}</div>}
-                  {answer.state && <div className="state-line">{answer.state}</div>}
-                  {answer.worth && <div className="worth"><b>Worth checking:</b> {answer.worth}</div>}
-                </>
-              ) : (
-                // The answer did not come back in the expected shape (a lone-worker answer carries
-                // no summary line at all). Print it exactly as written rather than guessing.
-                <div className="answer-body">{res.answer}</div>
-              )}
-            </div>
-          </div>
-
-          {entity && <HistoryPanel entity={entity} quote={quote} history={history} />}
-
-          <div className="panel">
-            <div className="panel-header">
-              <div className="panel-title">Rule cards used</div>
-              <div className="panel-title">{res.cards.length} found by search</div>
-            </div>
-            <div className="panel-body">
-              {res.cards.length === 0 && <div className="empty">No rule card matched this quote.</div>}
-              {/* keyed by position as well as citation: a federal and a state card can carry the
-                  same citation, and React drops a row when two keys match */}
-              {res.cards.map((c, i) => (
-                <div className="card-row" key={`${c.citation}-${i}`}>
-                  <span className="card-title">{c.title}</span>
-                  <span className="cite">{c.citation}</span>
-                  <div className="card-meta">
-                    {c.layer} · {c.state}
-                    {c.matched.length > 0 && <> · words: {c.matched.join(", ")}</>}
-                    {c.similarity != null && <> · meaning match: {c.similarity.toFixed(2)}</>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {res.similar && res.similar.length > 0 && (
-            <div className="panel">
-              <div className="panel-header">
-                <div className="panel-title">Similar past jobs</div>
-                <div className="panel-title">Context only, prices and names removed</div>
+      <div className="split">
+        <div className="sticky stack">
+          <div className="card">
+            <div className="hd"><h3>From ClickUp</h3><span className="pill wait">Read only</span></div>
+            <form className="bd stack" onSubmit={importTask}>
+              <div className="inline">
+                <input id="task" aria-label="ClickUp task link or WO number" value={taskRef} onChange={(e) => setTaskRef(e.target.value)} placeholder="WO-2338 or the task link" />
+                <button className="btn" type="submit" disabled={!taskRef.trim() || imported?.busy}>
+                  {imported?.busy ? <span className="spin" /> : ICON.download}Import
+                </button>
               </div>
-              <div className="panel-body">
-                {res.similar.map((s, i) => (
-                  <div className="card-row" key={i}>
-                    <span className="card-title">{s.job || s.category}</span>
-                    <span className="card-meta" style={{ marginLeft: 7 }}>
-                      Tech 1 {s.tech1_h ?? "?"} h · Tech 2 {s.tech2_h ?? "?"} h · meaning match {s.similarity.toFixed(2)}
+              {imported && !imported.busy && (imported.ok
+                ? <div className="lint ok">
+                    <span>Imported <b>{imported.task.name}</b> ({imported.task.status}){imported.fm && <>, {imported.fm}</>}.
+                      {!imported.quote && <> This task has no Client Quote yet.</>}
+                      {missing.length > 0 && <> No {missing.join(" or ")} in ClickUp: pick {missing.length > 1 ? "them" : "it"} below.</>}
                     </span>
-                    <div className="answer-body" style={{ fontSize: 12.5, marginTop: 4 }}>{s.tech_reported}</div>
-                    <div className="card-meta">Reason written: {s.reason_found}</div>
                   </div>
-                ))}
+                : <div className="lint bad">{imported.problem}</div>)}
+            </form>
+          </div>
+
+          <div className="card">
+            <div className="hd"><h3>Quote</h3><span className="muted small num">{quote.length} characters</span></div>
+            <div className="bd stack">
+              <div className="field">
+                <label htmlFor="quote">Tech reported and required steps</label>
+                <textarea id="quote" value={quote} onChange={(e) => setQuote(e.target.value)}
+                  placeholder={"Paste the Tech Reported line and the Required is to steps, or import a task above."} />
+              </div>
+              <div className="frm">
+                <div className="field">
+                  <label htmlFor="state">Store state</label>
+                  <select id="state" value={state} onChange={(e) => setState(e.target.value)}>
+                    <option value="">Not given</option>
+                    {STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor="entity">Entity</label>
+                  <select id="entity" value={entity} onChange={(e) => setEntity(e.target.value)}>
+                    <option value="">Not chosen</option>
+                    {ENTITIES.map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}
+                  </select>
+                </div>
+              </div>
+              <button className="btn pri lg wide" onClick={check} disabled={busy || tooShort}>
+                {busy ? <><span className="spin" />Checking</> : "Check this quote"}
+              </button>
+              {!busy && tooShort && quote.length > 0 && <div className="small muted">Paste at least 20 characters of the quote.</div>}
+            </div>
+          </div>
+        </div>
+
+        <div className="stack">
+          {!res && !busy && (
+            <div className="card">
+              <div className="hd"><h3>How it works</h3></div>
+              <div className="bd">
+                <ol className="steps3" style={{ margin: 0, padding: 0 }}>
+                  <li><div><b>Bring the quote in</b><span>Type a WO number or paste the ClickUp link, or paste the quote text.</span></div></li>
+                  <li><div><b>Check it</b><span>The answer says whether OSHA, safety or a two-person step backs the second tech, with the rule cards it used.</span></div></li>
+                  <li><div><b>Compare with the entity</b><span>Pick the entity to see how often it gets a second tech accepted on this kind of job. You decide.</span></div></li>
+                </ol>
               </div>
             </div>
           )}
-
-          {res.similar_hidden && (
-            <div className="panel">
-              <div className="panel-body empty">Similar past jobs were used but are hidden: turn the passcode on (SITE_PASSCODE) to show them.</div>
-            </div>
+          {busy && <div className="card"><div className="bd row muted"><span className="spin" />{stage}...</div></div>}
+          {res && !res.ok && <div className="lint bad">Error: {res.problem} {res.detail || ""}</div>}
+          {res?.ok && (
+            <>
+              <Verdict res={res} />
+              {entity && <History entity={entity} quote={quote} history={history} />}
+              <RuleCards cards={res.cards} />
+              <SimilarJobs res={res} />
+              <div className="foot">
+                <span>Search: {res.search}</span>
+                <span>{res.logged ? "Saved to log" : "Not logged"}</span>
+                <span>Model: {res.model}</span>
+                {/* Prompt caching is otherwise silent: the requests succeed either way and only the
+                    bill moves. This number is the only proof it still works. */}
+                <span>Tokens in {res.usage?.input_tokens ?? "?"}, out {res.usage?.output_tokens ?? "?"}{res.usage?.cache_read_input_tokens > 0 && `, ${res.usage.cache_read_input_tokens} cached`}</span>
+              </div>
+            </>
           )}
-
-          <div className="footnote">
-            <span>Search: {res.search}</span>
-            <span className="dot">·</span>
-            <span>{res.logged ? "saved to log" : "not logged"}</span>
-            <span className="dot">·</span>
-            <span>Model: {res.model}</span>
-            <span className="dot">·</span>
-            <span>tokens in {res.usage?.input_tokens ?? "?"}, out {res.usage?.output_tokens ?? "?"}</span>
-            {/* Prompt caching went live in PR #3 and is otherwise silent: the requests succeed
-                either way and only the bill moves. This number is the only proof it still works,
-                so it is on screen rather than in a log. */}
-            {res.usage?.cache_read_input_tokens > 0 && (
-              <>
-                <span className="dot">·</span>
-                <span>{res.usage.cache_read_input_tokens} cached</span>
-              </>
-            )}
-          </div>
-        </>
-      )}
-    </main>
+        </div>
+      </div>
+    </>
   );
 }

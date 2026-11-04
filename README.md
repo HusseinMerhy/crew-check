@@ -62,6 +62,9 @@ If either is missing, the app still answers from keyword search alone and the li
 | `lib/model.js` | Reads `CLAUDE_MODEL`; only accepts `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5`. |
 | `app/page.js` | The screen (runs in the browser). Builds the meaning vector, sends the quote to `/api/check`, shows the answer, the cards used and the similar past jobs. |
 | `app/api/health/route.js` | One tiny Claude call to prove the key and model work. |
+| `app/shell.js`, `app/globals.css` | **The look.** Left menu, top bar and cards in the Backlog Chaser identity (same tokens, fonts and components as `rawanseamless/backlog-rule`, `web/styles.css`), light and dark. |
+| `lib/answer.js` | Reads the bot's answer into its parts (headline, the OSHA, Safety and Two-person tiles, State, Permit, Worth checking). Shared by the check page and the daily queue. |
+| `app/queue/page.js` | **The daily queue.** What the once-a-day ClickUp check found, with filters and a side panel per quote. |
 | `app/eval/page.js` | **The eval, run from a browser** at `/eval`. Runs the eval cases against this site (fixed pipeline and agentic search), sends the meaning vector like a real user, and shows the KPI table and the agentic decision rule. Uses the site's own key: every check spends credit, and it asks first. Holdout results show as totals only. |
 | `lib/embed.js` | Builds the quote's meaning vector in the browser. Shared by the check page and `/eval`, so the eval sends exactly what a user's browser sends. |
 | `middleware.js` | The lock. If `SITE_PASSCODE` is set, every page and every `/api/*` route asks for it. If not set, the site is open. The compare is constant-time over SHA-256 digests, so the response time does not leak how much of a guess was right. |
