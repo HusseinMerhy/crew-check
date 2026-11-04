@@ -61,8 +61,8 @@ const quoteTask = (id, text, state = 34) => ({ id, name: `WO ${id}`, url: "", st
 function fakeDb() {
   const rows = new Map();
   return { rows, query: async (q, p) => {
-    if (q.startsWith("select")) return rows.has(p[0]) ? [{ quote_hash: rows.get(p[0])[7], job: rows.get(p[0])[13] ?? null }] : [];
-    if (q.startsWith("update")) { rows.get(p[0])[13] = p[1]; return []; }
+    if (q.startsWith("select")) return rows.has(p[0]) ? [{ quote_hash: rows.get(p[0])[7], job: rows.get(p[0])[13] ?? null, quote: rows.get(p[0])[14] ?? null }] : [];
+    if (q.startsWith("update")) { rows.get(p[0])[13] = p[1]; rows.get(p[0])[14] = p[2]; return []; }
     rows.set(p[0], p); return [];
   } };
 }
@@ -83,13 +83,17 @@ pages[0][0] = quoteTask("t1", hinge + ", now with a new step");
 out = await syncQuotes({ list, sql: db, check: okCheck, history: H });
 eq("a changed quote is checked again", [out.checked, out.unchanged], [1, 1]);
 eq("stores the job type", db.rows.get("t3")[13], "Door repair or replacement");
+eq("stores the quote", db.rows.get("t1")[14], hinge + ", now with a new step");
 // a row saved before the job type was stored gets it on the next run, without a new check
-db.rows.get("t3")[13] = undefined;
+db.rows.get("t3")[13] = undefined; db.rows.get("t3")[14] = undefined;
 const before = checks;
 out = await syncQuotes({ list, sql: db, check: okCheck, history: H });
-eq("backfills the job type without a new check", [db.rows.get("t3")[13], checks - before], ["Door repair or replacement", 0]);
+eq("backfills the job type and quote without a new check", [db.rows.get("t3")[13], db.rows.get("t3")[14], checks - before], ["Door repair or replacement", hinge + " again", 0]);
 eq("history line from entity and job", historyLine(H, "BKR", "Door repair or replacement"), "BKR quoted a second tech on 80% of 30 past door repair or replacement quotes (all entities: 70%).");
 eq("no history line for an entity without numbers", historyLine(H, "SFM", "Door repair or replacement"), null);
+const money = fakeDb();
+await syncQuotes({ list: async () => ({ tasks: [quoteTask("p1", hinge + ". Total: $1,270.24")], last: true }), sql: money, check: okCheck, history: null });
+eq("dollar amounts are removed from the stored quote", money.rows.get("p1")[14], hinge + ". Total: $[removed]");
 const failing = async () => ({ ok: false, problem: "timeout" });
 const db2 = fakeDb();
 out = await syncQuotes({ list, sql: db2, check: failing, history: null });

@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { embedQuote } from "../lib/embed";
 import { ENTITIES, lookup, MIN_QUOTES } from "../lib/history";
-import { parseAnswer, toneOf, valueClass } from "../lib/answer";
+import { parseAnswer, pointsOf, toneOf, valueClass } from "../lib/answer";
 
 const STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","PR"];
 
@@ -43,9 +43,9 @@ function Verdict({ res }) {
             ))}
           </div>
         )}
+        {a.body && <ul className="points">{pointsOf(a.body).map((x, i) => <li key={i}>{x}</li>)}</ul>}
         {a.worth && <div className={t.tone === "tape" ? "attn" : "note sig"}><b>Check:</b> {a.worth}</div>}
         {a.permit && <div className="note warn"><b>Permit:</b> {a.permit}</div>}
-        {a.body && <details className="why"><summary>Why</summary><div className="prose">{a.body}</div></details>}
         {a.state && <div className="small muted">{a.state}</div>}
       </div>
     </div>
@@ -84,8 +84,7 @@ function History({ entity, quote, history }) {
 function RuleCards({ cards }) {
   return (
     <div className="card">
-      <details className="fold">
-      <summary className="hd"><h3>Rules used</h3><span className="muted small">{cards.length}</span></summary>
+      <div className="hd"><h3>Rules used</h3><span className="muted small">{cards.length}</span></div>
       <div className="bd tight list">
         {cards.length === 0 && <div className="empty">No rule card matched this quote.</div>}
         {/* keyed by position as well as citation: a federal and a state card can carry the same
@@ -105,7 +104,6 @@ function RuleCards({ cards }) {
           </div>
         ))}
       </div>
-      </details>
     </div>
   );
 }
@@ -114,8 +112,7 @@ function SimilarJobs({ res }) {
   if (!res.similar?.length) return null;
   return (
     <div className="card">
-      <details className="fold">
-      <summary className="hd"><h3>Similar past jobs</h3><span className="muted small">{res.similar.length}</span></summary>
+      <div className="hd"><h3>Similar past jobs</h3><span className="muted small">{res.similar.length}</span></div>
       <div className="bd tight list">
         {res.similar.map((s, i) => (
           <div className="li" key={i}>
@@ -128,7 +125,6 @@ function SimilarJobs({ res }) {
           </div>
         ))}
       </div>
-      </details>
     </div>
   );
 }
