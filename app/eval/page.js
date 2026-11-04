@@ -104,7 +104,7 @@ function kpiRows(runs) {
   return { summaries, warnings };
 }
 
-const cell = { padding: "6px 8px", borderBottom: "1px solid rgba(255,255,255,0.08)", textAlign: "left", verticalAlign: "top", whiteSpace: "nowrap" };
+const cell = { padding: "10px 12px", borderBottom: "1px solid var(--line-2)", textAlign: "left", verticalAlign: "top", whiteSpace: "nowrap" };
 const wrapCell = { ...cell, whiteSpace: "normal" };
 
 export default function EvalPage() {
@@ -186,7 +186,14 @@ export default function EvalPage() {
   };
 
   return (
-    <main>
+    <main className="legacy">
+      <div className="page-head">
+        <div>
+          <div className="eyebrow">Quality</div>
+          <h1>Test results</h1>
+          <p>Run the 25 practice quotes and the hidden set against the live checker, and see the score, cost and speed.</p>
+        </div>
+      </div>
       <div className="panel">
         <div className="panel-header">
           <div className="panel-title">Eval runner</div>

@@ -1,41 +1,26 @@
 import "./globals.css";
+import Shell from "./shell";
 
 export const metadata = {
-  title: "Crew check",
-  description: "Vendor Sourcing Dispatcher: does this quote need a second tech under OSHA?",
+  title: "Crew Check",
+  description: "Vista quoting: does this quote need a second tech, and what does this entity usually get accepted?",
 };
 
 // Without the viewport meta the page lays out at a notional 980px and the browser scales the
-// whole thing down, so the 620px breakpoint in globals.css never fires: the three verdict tiles
-// stay crushed into one row and the values are unreadable. This was observed on a phone-width
-// viewport, not theorised.
+// whole thing down, so the phone breakpoints in globals.css never fire. Observed, not theorised.
 export const viewport = { width: "device-width", initialScale: 1 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
+      <head>
+        {/* The Backlog Chaser fonts: Instrument Sans for text, Bricolage Grotesque for headings. */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+      </head>
       <body>
-        {/* The topbar is static chrome: no state, no handlers, the same on every render. It lives
-            here rather than in page.js because page.js is a client component, and there is no
-            reason to ship markup that never changes to the browser as part of one. */}
-        <div className="topbar">
-          <div className="brand">
-            <div className="logo">V</div>
-            <div>
-              <strong>Vendor Sourcing</strong>
-              <small>Dispatcher</small>
-            </div>
-          </div>
-          <div>
-            <div className="top-title">OSHA crew check</div>
-            <div className="top-sub">Second-tech justification</div>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <a className="pill" href="/">Check</a>
-            <a className="pill" href="/queue">Daily queue</a>
-          </div>
-        </div>
-        {children}
+        <Shell>{children}</Shell>
       </body>
     </html>
   );
