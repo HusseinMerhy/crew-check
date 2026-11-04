@@ -191,7 +191,7 @@ export default function EvalPage() {
         <div>
           <div className="eyebrow">Quality</div>
           <h1>Test results</h1>
-          <p>Run the 25 practice quotes and the hidden set against the live checker, and see the score, cost and speed.</p>
+          <p>Score the checker on practice quotes.</p>
         </div>
       </div>
       <div className="panel">

@@ -1,6 +1,6 @@
 // Unit tests for the Vol 2 pieces that run without a network: the job type, the history lookup
 // and the read-only ClickUp import's parsing. No API credit: node tests/vol2.test.mjs
-import { jobOf, lookup, MIN_QUOTES } from "../lib/history.js";
+import { jobOf, lookup, historyLine, MIN_QUOTES } from "../lib/history.js";
 import { parseTaskRef, fieldText } from "../lib/clickup.js";
 import { syncQuotes, MAX_PER_RUN } from "../lib/sync.js";
 
@@ -61,7 +61,8 @@ const quoteTask = (id, text, state = 34) => ({ id, name: `WO ${id}`, url: "", st
 function fakeDb() {
   const rows = new Map();
   return { rows, query: async (q, p) => {
-    if (q.startsWith("select")) return rows.has(p[0]) ? [{ quote_hash: rows.get(p[0])[7] }] : [];
+    if (q.startsWith("select")) return rows.has(p[0]) ? [{ quote_hash: rows.get(p[0])[7], job: rows.get(p[0])[13] ?? null }] : [];
+    if (q.startsWith("update")) { rows.get(p[0])[13] = p[1]; return []; }
     rows.set(p[0], p); return [];
   } };
 }
@@ -81,6 +82,14 @@ eq("second run skips unchanged quotes", [out.checked, out.unchanged, checks], [0
 pages[0][0] = quoteTask("t1", hinge + ", now with a new step");
 out = await syncQuotes({ list, sql: db, check: okCheck, history: H });
 eq("a changed quote is checked again", [out.checked, out.unchanged], [1, 1]);
+eq("stores the job type", db.rows.get("t3")[13], "Door repair or replacement");
+// a row saved before the job type was stored gets it on the next run, without a new check
+db.rows.get("t3")[13] = undefined;
+const before = checks;
+out = await syncQuotes({ list, sql: db, check: okCheck, history: H });
+eq("backfills the job type without a new check", [db.rows.get("t3")[13], checks - before], ["Door repair or replacement", 0]);
+eq("history line from entity and job", historyLine(H, "BKR", "Door repair or replacement"), "BKR quoted a second tech on 80% of 30 past door repair or replacement quotes (all entities: 70%).");
+eq("no history line for an entity without numbers", historyLine(H, "SFM", "Door repair or replacement"), null);
 const failing = async () => ({ ok: false, problem: "timeout" });
 const db2 = fakeDb();
 out = await syncQuotes({ list, sql: db2, check: failing, history: null });
