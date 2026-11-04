@@ -15,9 +15,11 @@
 import fs from "node:fs";
 import { ENTITIES, jobOf } from "../lib/history.js";
 
-const COMP_COLUMNS = ["21. Comp", "Comp"];
+// ClickUp's own export names the column "21. Comp (drop down)"; save that sheet as CSV first.
+const COMP_COLUMNS = ["21. Comp (drop down)", "21. Comp", "Comp"];
 const WO_RULES = [
-  // 57 of 57 sampled quotes in these two formats were BKR (Nov 3, 2026).
+  // 57 of 57 sampled quotes in these two formats were BKR (Nov 3, 2026). Checked on the full
+  // Nov 4 export with the Comp column: 13,002 of 13,293 (98%), so prefer the column.
   { entity: "BKR", test: (wo) => /^\d{7}-\d{8}$/.test(wo) || /^\d{8}$/.test(wo) },
 ];
 
