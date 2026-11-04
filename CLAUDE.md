@@ -329,9 +329,11 @@ The panel is worked out in code from `ENTITY_HISTORY` (`lib/history.js`), never 
 model, and never changes the answer, so the eval is unaffected. The numbers are company
 data and the repository is public, so they live in Vercel, not in git.
 
-Without a Comp column in the export only BKR can be told apart (by work order format,
-57 of 57 sampled). The other entities show "no history yet" until an export with the
-Comp column is run through the script.
+Since the Nov 4 export (24,778 quotes with the "21. Comp (drop down)" column) every
+entity has history. Save the ClickUp sheet as CSV before running the script. Without the
+column only BKR can be told apart, by work order format, which the full export showed is
+98% right (13,002 of 13,293), not the 100% the first sample suggested. EDS has only 10
+quotes, so its job types fall under the 20-quote floor and show "not enough to show".
 
 `/api/clickup` imports one task by link or WO number with `CLICKUP_API_TOKEN`. It sends
 GET requests only and never reads the task description (work orders have carried payment
