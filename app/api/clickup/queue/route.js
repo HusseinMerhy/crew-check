@@ -1,10 +1,12 @@
 // Vol 2: the stored results of the daily automatic check, newest first, for /queue.
 // Behind the site passcode like every other route.
 // Each row's history line is redrawn here from the current ENTITY_HISTORY, so loading newer
-// numbers in Vercel updates every row at once. A row checked before the job type was stored keeps
-// the line it was saved with until the next daily run fills its job in.
+// numbers in Vercel updates every row at once. Rows saved before the quote was stored get it here,
+// fetched from ClickUp (GET only, no new check).
 import { getSql } from "../../../../lib/db";
 import { historyLine } from "../../../../lib/history";
+import { getTask } from "../../../../lib/clickup";
+import { fillQuotes } from "../../../../lib/sync";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
@@ -19,6 +21,8 @@ export async function GET() {
     const rows = await sql.query(
       `select task_id, task_name, task_url, status, entity, fm, state, headline, answer, history, job, quote, ok, problem, checked_at
        from auto_checks order by checked_at desc limit 200`);
+    const token = process.env.CLICKUP_API_TOKEN;
+    if (token) await fillQuotes({ rows, sql, getTask: (id) => getTask({ token, id }) });
     for (const r of rows) r.history = (r.job && historyLine(history, r.entity, r.job)) || r.history;
     return Response.json({ ok: true, rows, ...flags, history_entities: Object.keys(history?.entities || {}), history_built: history?.built || null });
   } catch (e) {

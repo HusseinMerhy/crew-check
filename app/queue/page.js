@@ -111,7 +111,7 @@ export default function Queue() {
                   return (
                     <tr key={r.task_id} className="click" onClick={() => setOpen(r.task_id)}>
                       <td className="mono">{r.task_name}</td>
-                      <td className="snip">{quoteSnippet(r.quote) || <span className="muted">Shown after the next run</span>}</td>
+                      <td className="snip">{quoteSnippet(r.quote) || <span className="muted">{r.quote == null ? "Not loaded yet" : "No quote in ClickUp"}</span>}</td>
                       <td>{r.entity || <span className="muted">-</span>}</td>
                       <td>{r.fm || <span className="muted">-</span>}</td>
                       <td>{r.state || <span className="muted">-</span>}</td>
@@ -140,7 +140,7 @@ export default function Queue() {
             <div className="db">
               <div className="field">
                 <label>Quote</label>
-                {sel.quote ? <div className="quotebox">{sel.quote}</div> : <div className="small muted">The quote shows after the next daily run.</div>}
+                {sel.quote ? <div className="quotebox">{sel.quote}</div> : <div className="small muted">{sel.quote == null ? "Not loaded yet: refresh in a moment." : "This task has no Client Quote in ClickUp."}</div>}
               </div>
               {sel.ok
                 ? <Answer text={sel.answer} />
