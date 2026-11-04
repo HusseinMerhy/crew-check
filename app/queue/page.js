@@ -2,7 +2,7 @@
 // Vol 2: the daily automatic check's results. Each ClickUp quote waiting for approval is checked
 // once a day (and again if its quote text changes). Read only: nothing here writes to ClickUp.
 import { useEffect, useMemo, useState } from "react";
-import { parseAnswer, toneOf as tone, valueClass } from "../../lib/answer";
+import { parseAnswer, pointsOf, quoteSnippet, toneOf as tone, valueClass } from "../../lib/answer";
 
 // Same tones as the check page; the queue only needs the short class names.
 const CLS = { sig: "sig", warn: "warn", tape: "tape", ok: "ok" };
@@ -28,9 +28,9 @@ function Answer({ text }) {
           {a.verdicts.map((v, i) => <div className="fact" key={i}><div className="lbl">{v.label}</div><div className={`v ${valueClass(v.value)}`}>{v.value}</div></div>)}
         </div>
       )}
+      {a.body && <ul className="points">{pointsOf(a.body).map((x, i) => <li key={i}>{x}</li>)}</ul>}
       {a.worth && <div className="attn"><b>Check:</b> {a.worth}</div>}
       {a.permit && <div className="note warn"><b>Permit:</b> {a.permit}</div>}
-      {a.body && <details className="why"><summary>Why</summary><div className="prose">{a.body}</div></details>}
     </>
   );
 }
@@ -104,13 +104,14 @@ export default function Queue() {
           {data?.ok && rows.length === 0 && <div className="empty">Nothing checked yet. The first daily run fills this list.</div>}
           {shown.length > 0 && (
             <table>
-              <thead><tr><th>Work order</th><th>Entity</th><th>Client</th><th>State</th><th>Verdict</th><th>Checked</th></tr></thead>
+              <thead><tr><th>Work order</th><th>Quote</th><th>Entity</th><th>Client</th><th>State</th><th>Verdict</th><th>Checked</th></tr></thead>
               <tbody>
                 {shown.map((r) => {
                   const t = toneOf(r.headline);
                   return (
                     <tr key={r.task_id} className="click" onClick={() => setOpen(r.task_id)}>
                       <td className="mono">{r.task_name}</td>
+                      <td className="snip">{quoteSnippet(r.quote) || <span className="muted">Shown after the next run</span>}</td>
                       <td>{r.entity || <span className="muted">-</span>}</td>
                       <td>{r.fm || <span className="muted">-</span>}</td>
                       <td>{r.state || <span className="muted">-</span>}</td>
@@ -137,6 +138,10 @@ export default function Queue() {
               <button className="x" aria-label="Close" onClick={() => setOpen(null)}><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
             </div>
             <div className="db">
+              <div className="field">
+                <label>Quote</label>
+                {sel.quote ? <div className="quotebox">{sel.quote}</div> : <div className="small muted">The quote shows after the next daily run.</div>}
+              </div>
               {sel.ok
                 ? <Answer text={sel.answer} />
                 : <div className="lint bad">Check failed: {sel.problem}. It is tried again on the next run.</div>}

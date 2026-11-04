@@ -15,8 +15,9 @@ export async function GET() {
   try { history = process.env.ENTITY_HISTORY ? JSON.parse(process.env.ENTITY_HISTORY) : null; } catch { history = null; }
   try {
     await sql.query(`alter table auto_checks add column if not exists job text`);
+    await sql.query(`alter table auto_checks add column if not exists quote text`);
     const rows = await sql.query(
-      `select task_id, task_name, task_url, status, entity, fm, state, headline, answer, history, job, ok, problem, checked_at
+      `select task_id, task_name, task_url, status, entity, fm, state, headline, answer, history, job, quote, ok, problem, checked_at
        from auto_checks order by checked_at desc limit 200`);
     for (const r of rows) r.history = (r.job && historyLine(history, r.entity, r.job)) || r.history;
     return Response.json({ ok: true, rows, ...flags, history_entities: Object.keys(history?.entities || {}), history_built: history?.built || null });
