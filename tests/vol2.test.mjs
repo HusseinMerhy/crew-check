@@ -2,7 +2,7 @@
 // and the read-only ClickUp import's parsing. No API credit: node tests/vol2.test.mjs
 import { jobOf, lookup, historyLine, MIN_QUOTES } from "../lib/history.js";
 import { parseTaskRef, fieldText } from "../lib/clickup.js";
-import { syncQuotes, MAX_PER_RUN } from "../lib/sync.js";
+import { syncQuotes, fillQuotes, MAX_PER_RUN } from "../lib/sync.js";
 
 let pass = 0, fail = 0;
 const eq = (name, got, want) => {
@@ -94,6 +94,15 @@ eq("no history line for an entity without numbers", historyLine(H, "SFM", "Door 
 const money = fakeDb();
 await syncQuotes({ list: async () => ({ tasks: [quoteTask("p1", hinge + ". Total: $1,270.24")], last: true }), sql: money, check: okCheck, history: null });
 eq("dollar amounts are removed from the stored quote", money.rows.get("p1")[14], hinge + ". Total: $[removed]");
+// queue rows saved before quotes were stored are filled straight from ClickUp, with no new check
+const oldRows = [{ task_id: "o1", quote: null, job: null }, { task_id: "o2", quote: null, job: null }, { task_id: "o3", quote: "kept", job: "Other" }];
+const updates = [];
+const fetched = [];
+const n = await fillQuotes({ rows: oldRows, sql: { query: async (q, p) => { updates.push(p); return []; } },
+  getTask: async (id) => { fetched.push(id); if (id === "o2") return quoteTask(id, ""); return quoteTask(id, hinge + " $99"); } });
+eq("fills only rows without a quote", [n, fetched], [2, ["o1", "o2"]]);
+eq("filled quote has money removed and a job type", [oldRows[0].quote, oldRows[0].job], [hinge + " $[removed]", "Door repair or replacement"]);
+eq("a task with no quote is marked empty, not refetched", oldRows[1].quote, "");
 const failing = async () => ({ ok: false, problem: "timeout" });
 const db2 = fakeDb();
 out = await syncQuotes({ list, sql: db2, check: failing, history: null });
