@@ -40,7 +40,6 @@ export default function Shell({ children }) {
         </nav>
         <div className="rail-foot">
           <b>Read only on ClickUp</b>
-          Checks never change a task. A person decides.
         </div>
       </aside>
       <div className={`scrim${open ? " show" : ""}`} onClick={() => setOpen(false)} />

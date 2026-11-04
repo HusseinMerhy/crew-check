@@ -30,6 +30,8 @@ export async function GET(req) {
   await sql.query(`create table if not exists auto_checks (
     task_id text primary key, task_name text, task_url text, status text, entity text, fm text, state text,
     quote_hash text, headline text, answer text, history text, ok boolean, problem text, checked_at timestamptz default now())`);
+  // Added after the first runs: the job type, so the queue can redraw each row's history line.
+  await sql.query(`alter table auto_checks add column if not exists job text`);
 
   const statuses = (process.env.CLICKUP_SYNC_STATUSES || "").split(",").map((s) => s.trim()).filter(Boolean);
   let history = null;

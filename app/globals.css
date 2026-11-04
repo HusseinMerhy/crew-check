@@ -131,7 +131,7 @@ svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:
 .pill.sig{background:var(--signal-soft);color:var(--signal)}
 .pill.warn{background:var(--warn-soft);color:var(--warn)}
 .pill.close{background:var(--close-soft);color:var(--close)}
-.pill.tape{background:var(--tape-soft);color:var(--tape-ink)}
+.pill.tape{background:var(--tape-soft);color:var(--warn)}
 .pill.wait{background:var(--wait-soft);color:var(--wait)}
 .chip{display:inline-flex;align-items:center;padding:3px 9px;border-radius:7px;background:var(--signal-soft);color:var(--signal);font-family:var(--mono);font-size:11.5px;word-break:break-word}
 
@@ -261,3 +261,14 @@ main.legacy{display:flex;flex-direction:column;gap:16px}
 .controls label{display:inline-flex;align-items:center;gap:8px;font-size:14px;color:var(--ink-2)}
 .controls input[type=checkbox]{width:16px;height:16px;accent-color:var(--signal)}
 .controls code,.card-meta code{font-family:var(--mono);font-size:12px;background:var(--inset);padding:1px 5px;border-radius:5px}
+
+/* Folded parts: "Why" under the verdict, and the rules and similar jobs cards. */
+details.why>summary{cursor:pointer;font-weight:600;color:var(--signal);font-size:14px;list-style:none}
+details.why>summary::-webkit-details-marker,details.fold>summary::-webkit-details-marker{display:none}
+details.why>summary::before{content:"▸ "}
+details.why[open]>summary::before{content:"▾ "}
+details.why[open]>summary{margin-bottom:8px}
+details.fold>summary{cursor:pointer;list-style:none;border-bottom:0}
+details.fold[open]>summary{border-bottom:1px solid var(--line-2)}
+details.fold>summary h3::before{content:"▸ ";color:var(--ink-3)}
+details.fold[open]>summary h3::before{content:"▾ "}

@@ -28,10 +28,9 @@ function Answer({ text }) {
           {a.verdicts.map((v, i) => <div className="fact" key={i}><div className="lbl">{v.label}</div><div className={`v ${valueClass(v.value)}`}>{v.value}</div></div>)}
         </div>
       )}
-      {a.body && <div className="prose">{a.body}</div>}
-      {a.worth && <div className="attn"><b>Worth checking:</b> {a.worth}</div>}
+      {a.worth && <div className="attn"><b>Check:</b> {a.worth}</div>}
       {a.permit && <div className="note warn"><b>Permit:</b> {a.permit}</div>}
-      {a.state && <div className="note"><b>State:</b> {a.state}</div>}
+      {a.body && <details className="why"><summary>Why</summary><div className="prose">{a.body}</div></details>}
     </>
   );
 }
@@ -46,7 +45,7 @@ export default function Queue() {
   useEffect(() => { load(); }, []);
 
   async function runNow() {
-    if (!confirm("Check the waiting ClickUp quotes now? Each quote checked spends API credit (up to 20 per run).")) return;
+    if (!confirm("Check up to 20 waiting quotes now?")) return;
     setRunning({ busy: true });
     try { setRunning(await (await fetch("/api/clickup/sync?manual=1")).json()); }
     catch { setRunning({ ok: false, problem: "Could not reach the check." }); }
@@ -65,7 +64,7 @@ export default function Queue() {
         <div>
           <div className="eyebrow">Quotes</div>
           <h1>Daily queue</h1>
-          <p>Quotes waiting in ClickUp are checked once a day, read only, newest first. A quote is checked again only if its text changes.</p>
+          <p>Waiting ClickUp quotes, checked daily.</p>
         </div>
         <div className="act">
           <button className="btn" onClick={load}>Refresh</button>
@@ -73,17 +72,20 @@ export default function Queue() {
         </div>
       </div>
 
-      {data && !data.auto && <div className="attn"><b>The daily run is off.</b> Add CRON_SECRET in Vercel and redeploy to turn it on.</div>}
+      {data?.ok && (data.history_entities?.length
+        ? <div className="small muted">History: {data.history_entities.join(", ")}</div>
+        : <div className="small muted">No history loaded</div>)}
+      {data && !data.auto && <div className="attn"><b>Daily run is off.</b> Set CRON_SECRET in Vercel.</div>}
       {running && !running.busy && (running.ok
-        ? <div className="lint ok">Checked {running.checked}, failed {running.failed}, unchanged {running.unchanged}, no quote text {running.no_quote}{running.left_for_next_run ? ". More are waiting for the next run." : "."}</div>
+        ? <div className="lint ok">Checked {running.checked} · failed {running.failed}{running.left_for_next_run ? " · more next run" : ""}</div>
         : <div className="lint bad">{running.problem}</div>)}
       {data && !data.ok && <div className="lint bad">{data.problem}</div>}
 
       <div className="grid g4">
-        <div className="card tile"><div className="lbl">Checked</div><div className="val">{rows.length}</div><div className="sub">quotes in the list</div></div>
-        <div className="card tile focus"><div className="lbl">Needs a reason</div><div className="val">{counts.tape || 0}</div><div className="sub">no reason for the second tech</div></div>
-        <div className="card tile"><div className="lbl">Justified</div><div className="val">{(counts.ok || 0) + (counts.sig || 0)}</div><div className="sub">{counts.sig || 0} of them by an OSHA rule</div></div>
-        <div className="card tile"><div className="lbl">Check one fact</div><div className="val">{counts.warn || 0}</div><div className="sub">OSHA may apply: one fact decides</div></div>
+        <div className="card tile"><div className="lbl">Checked</div><div className="val">{rows.length}</div></div>
+        <div className="card tile focus"><div className="lbl">Needs a reason</div><div className="val">{counts.tape || 0}</div></div>
+        <div className="card tile"><div className="lbl">Justified</div><div className="val">{(counts.ok || 0) + (counts.sig || 0)}</div></div>
+        <div className="card tile"><div className="lbl">Check one fact</div><div className="val">{counts.warn || 0}</div></div>
       </div>
 
       <div className="card">
@@ -138,7 +140,7 @@ export default function Queue() {
               {sel.ok
                 ? <Answer text={sel.answer} />
                 : <div className="lint bad">Check failed: {sel.problem}. It is tried again on the next run.</div>}
-              {sel.history && <div className="note sig"><b>History:</b> {sel.history}</div>}
+              {sel.history && <div className="note sig">{sel.history}</div>}
               {sel.task_url && <a className="btn" href={sel.task_url} target="_blank" rel="noreferrer">Open in ClickUp</a>}
             </div>
           </>

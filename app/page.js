@@ -43,10 +43,10 @@ function Verdict({ res }) {
             ))}
           </div>
         )}
-        {a.body && <div className="prose">{a.body}</div>}
-        {a.worth && <div className={t.tone === "tape" ? "attn" : "note sig"}><b>Worth checking:</b> {a.worth}</div>}
+        {a.worth && <div className={t.tone === "tape" ? "attn" : "note sig"}><b>Check:</b> {a.worth}</div>}
         {a.permit && <div className="note warn"><b>Permit:</b> {a.permit}</div>}
-        {a.state && <div className="note"><b>State:</b> {a.state}</div>}
+        {a.body && <details className="why"><summary>Why</summary><div className="prose">{a.body}</div></details>}
+        {a.state && <div className="small muted">{a.state}</div>}
       </div>
     </div>
   );
@@ -58,28 +58,24 @@ function History({ entity, quote, history }) {
   const label = ENTITIES.find((e) => e.code === entity)?.label || entity;
   const h = history?.ok ? lookup(history.history, entity, quote) : null;
   let body;
-  if (!history) body = <div className="row muted"><span className="spin" /> Loading history...</div>;
+  if (!history) body = <div className="row muted"><span className="spin" /> Loading</div>;
   else if (!history.ok) body = <div className="muted">{history.problem}</div>;
-  else if (!h.hasEntity) body = <div className="muted">No history for {label} yet.</div>;
-  else if (!h.entity) body = <div className="muted">Fewer than {MIN_QUOTES} past {label} quotes for {h.job.toLowerCase()}: not enough to show a number.</div>;
+  else if (!h.hasEntity) body = <div className="muted">No numbers for {label} yet.</div>;
+  else if (!h.entity) body = <div className="muted">Too few past {h.job.toLowerCase()} quotes (under {MIN_QUOTES}).</div>;
   else body = (
     <div className="stack">
       <div className="cmp">
         <div className="r me"><span>{label}</span><div className="trk"><div className="fill" style={{ width: `${h.entity.t2}%` }} /></div><b className="num">{h.entity.t2}%</b></div>
         {h.everyone && <div className="r"><span className="muted">All entities</span><div className="trk"><div className="fill" style={{ width: `${h.everyone.t2}%` }} /></div><span className="num muted">{h.everyone.t2}%</span></div>}
       </div>
-      <dl className="kv">
-        <dt>Based on</dt><dd className="num">{h.entity.n.toLocaleString()} past {h.job.toLowerCase()} quotes</dd>
-        <dt>Reason written</dt><dd className="num">{h.entity.reason ?? "?"}% of those with a Tech 2</dd>
-        {h.entity.t2h != null && <><dt>Typical Tech 2</dt><dd className="num">{h.entity.t2h} h</dd></>}
-        {h.entity.t3 > 0 && <><dt>Third tech</dt><dd className="num">{h.entity.t3}% of them</dd></>}
-      </dl>
-      <div className="small muted">Past practice, not a reason: it never replaces the answer. Accepted quotes only, final versions.</div>
+      <div className="small muted num">
+        {h.entity.n.toLocaleString()} past quotes · reason written {h.entity.reason ?? "?"}%{h.entity.t2h != null && ` · Tech 2 usually ${h.entity.t2h} h`} · past practice, not a rule
+      </div>
     </div>
   );
   return (
     <div className="card">
-      <div className="hd"><h3>{label} history</h3>{h && <span className="pill sig">{h.job}</span>}</div>
+      <div className="hd"><h3>{label}: 2nd tech accepted</h3>{h && <span className="pill sig">{h.job}</span>}</div>
       <div className="bd">{body}</div>
     </div>
   );
@@ -88,7 +84,8 @@ function History({ entity, quote, history }) {
 function RuleCards({ cards }) {
   return (
     <div className="card">
-      <div className="hd"><h3>Rule cards used</h3><span className="muted small">{cards.length} found</span></div>
+      <details className="fold">
+      <summary className="hd"><h3>Rules used</h3><span className="muted small">{cards.length}</span></summary>
       <div className="bd tight list">
         {cards.length === 0 && <div className="empty">No rule card matched this quote.</div>}
         {/* keyed by position as well as citation: a federal and a state card can carry the same
@@ -108,16 +105,17 @@ function RuleCards({ cards }) {
           </div>
         ))}
       </div>
+      </details>
     </div>
   );
 }
 
 function SimilarJobs({ res }) {
-  if (res.similar_hidden) return <div className="note">Similar past jobs were used but are hidden: turn the site passcode on to show them.</div>;
   if (!res.similar?.length) return null;
   return (
     <div className="card">
-      <div className="hd"><h3>Similar past jobs</h3><span className="muted small">Context only, prices and names removed</span></div>
+      <details className="fold">
+      <summary className="hd"><h3>Similar past jobs</h3><span className="muted small">{res.similar.length}</span></summary>
       <div className="bd tight list">
         {res.similar.map((s, i) => (
           <div className="li" key={i}>
@@ -130,6 +128,7 @@ function SimilarJobs({ res }) {
           </div>
         ))}
       </div>
+      </details>
     </div>
   );
 }
@@ -169,9 +168,9 @@ export default function Home() {
     setBusy(true); setRes(null);
     if (entity && !history) fetch("/api/history").then((r) => r.json()).then(setHistory).catch(() => setHistory({ ok: false, problem: "Could not load the history." }));
     let vector = null;
-    try { setStage("Reading the quote's meaning (the first check loads a small model)"); vector = await embedQuote(quote); }
+    try { setStage("Reading the quote"); vector = await embedQuote(quote); }
     catch { vector = null; }
-    setStage("Checking the rules");
+    setStage("Checking");
     try {
       const r = await fetch("/api/check", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quote, state, vector }) });
       setRes(await r.json());
@@ -188,26 +187,26 @@ export default function Home() {
         <div>
           <div className="eyebrow">Quotes</div>
           <h1>Check a quote</h1>
-          <p>Does the second tech hold up, under OSHA, for safety or because a step needs two people? And what does this entity usually get accepted?</p>
+          <p>Is the second tech justified?</p>
         </div>
       </div>
 
       <div className="split">
         <div className="sticky stack">
           <div className="card">
-            <div className="hd"><h3>From ClickUp</h3><span className="pill wait">Read only</span></div>
+            <div className="hd"><h3>Import from ClickUp</h3><span className="pill wait">Read only</span></div>
             <form className="bd stack" onSubmit={importTask}>
               <div className="inline">
-                <input id="task" aria-label="ClickUp task link or WO number" value={taskRef} onChange={(e) => setTaskRef(e.target.value)} placeholder="WO-2338 or the task link" />
+                <input id="task" aria-label="ClickUp task link or WO number" value={taskRef} onChange={(e) => setTaskRef(e.target.value)} placeholder="WO number or link" />
                 <button className="btn" type="submit" disabled={!taskRef.trim() || imported?.busy}>
                   {imported?.busy ? <span className="spin" /> : ICON.download}Import
                 </button>
               </div>
               {imported && !imported.busy && (imported.ok
                 ? <div className="lint ok">
-                    <span>Imported <b>{imported.task.name}</b> ({imported.task.status}){imported.fm && <>, {imported.fm}</>}.
-                      {!imported.quote && <> This task has no Client Quote yet.</>}
-                      {missing.length > 0 && <> No {missing.join(" or ")} in ClickUp: pick {missing.length > 1 ? "them" : "it"} below.</>}
+                    <span><b>{imported.task.name}</b>{imported.fm && <> · {imported.fm}</>}
+                      {!imported.quote && <> · no quote yet</>}
+                      {missing.length > 0 && <> · pick {missing.join(" and ")}</>}
                     </span>
                   </div>
                 : <div className="lint bad">{imported.problem}</div>)}
@@ -215,16 +214,12 @@ export default function Home() {
           </div>
 
           <div className="card">
-            <div className="hd"><h3>Quote</h3><span className="muted small num">{quote.length} characters</span></div>
+            <div className="hd"><h3>Quote</h3></div>
             <div className="bd stack">
-              <div className="field">
-                <label htmlFor="quote">Tech reported and required steps</label>
-                <textarea id="quote" value={quote} onChange={(e) => setQuote(e.target.value)}
-                  placeholder={"Paste the Tech Reported line and the Required is to steps, or import a task above."} />
-              </div>
+              <textarea id="quote" aria-label="Quote" value={quote} onChange={(e) => setQuote(e.target.value)} placeholder="Paste the quote" />
               <div className="frm">
                 <div className="field">
-                  <label htmlFor="state">Store state</label>
+                  <label htmlFor="state">State</label>
                   <select id="state" value={state} onChange={(e) => setState(e.target.value)}>
                     <option value="">Not given</option>
                     {STATES.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -239,9 +234,8 @@ export default function Home() {
                 </div>
               </div>
               <button className="btn pri lg wide" onClick={check} disabled={busy || tooShort}>
-                {busy ? <><span className="spin" />Checking</> : "Check this quote"}
+                {busy ? <><span className="spin" />Checking</> : "Check"}
               </button>
-              {!busy && tooShort && quote.length > 0 && <div className="small muted">Paste at least 20 characters of the quote.</div>}
             </div>
           </div>
         </div>
@@ -249,17 +243,16 @@ export default function Home() {
         <div className="stack">
           {!res && !busy && (
             <div className="card">
-              <div className="hd"><h3>How it works</h3></div>
               <div className="bd">
                 <ol className="steps3" style={{ margin: 0, padding: 0 }}>
-                  <li><div><b>Bring the quote in</b><span>Type a WO number or paste the ClickUp link, or paste the quote text.</span></div></li>
-                  <li><div><b>Check it</b><span>The answer says whether OSHA, safety or a two-person step backs the second tech, with the rule cards it used.</span></div></li>
-                  <li><div><b>Compare with the entity</b><span>Pick the entity to see how often it gets a second tech accepted on this kind of job. You decide.</span></div></li>
+                  <li><div><b>Import or paste the quote</b></div></li>
+                  <li><div><b>Pick state and entity</b></div></li>
+                  <li><div><b>Check</b></div></li>
                 </ol>
               </div>
             </div>
           )}
-          {busy && <div className="card"><div className="bd row muted"><span className="spin" />{stage}...</div></div>}
+          {busy && <div className="card"><div className="bd row muted"><span className="spin" />{stage}</div></div>}
           {res && !res.ok && <div className="lint bad">Error: {res.problem} {res.detail || ""}</div>}
           {res?.ok && (
             <>
@@ -267,13 +260,10 @@ export default function Home() {
               {entity && <History entity={entity} quote={quote} history={history} />}
               <RuleCards cards={res.cards} />
               <SimilarJobs res={res} />
-              <div className="foot">
-                <span>Search: {res.search}</span>
-                <span>{res.logged ? "Saved to log" : "Not logged"}</span>
-                <span>Model: {res.model}</span>
-                {/* Prompt caching is otherwise silent: the requests succeed either way and only the
-                    bill moves. This number is the only proof it still works. */}
-                <span>Tokens in {res.usage?.input_tokens ?? "?"}, out {res.usage?.output_tokens ?? "?"}{res.usage?.cache_read_input_tokens > 0 && `, ${res.usage.cache_read_input_tokens} cached`}</span>
+              {/* Prompt caching is otherwise silent: the requests succeed either way and only the bill
+                  moves. The token counts, on hover, are the only proof it still works. */}
+              <div className="foot" title={`Tokens in ${res.usage?.input_tokens ?? "?"}, out ${res.usage?.output_tokens ?? "?"}, cached ${res.usage?.cache_read_input_tokens ?? 0}. ${res.logged ? "Saved to log." : "Not logged."}`}>
+                <span>{res.model} · {res.search}</span>
               </div>
             </>
           )}
