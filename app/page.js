@@ -24,7 +24,7 @@ function Verdict({ res }) {
   }
   const t = toneOf(a.headline);
   return (
-    <div className="card">
+    <div className={`card verdict-card tone-${t.tone}`}>
       <div className="bd stack">
         <div className={`verdict-head tone-${t.tone}`}>
           <div className="badge">{ICON[t.icon]}</div>
