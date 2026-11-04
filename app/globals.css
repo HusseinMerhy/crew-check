@@ -290,3 +290,19 @@ details.quote-fold[open]>summary::before{content:"▾"}
 details.quote-fold>summary span{color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 details.quote-fold[open]>summary span{display:none}
 details.quote-fold .quotebox{border:0;border-top:1px solid var(--line-2);border-radius:0 0 10px 10px}
+
+/* The entity history as two big numbers side by side, the entity's in Vista green. */
+.big2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.big2>div{border:1px solid var(--fact-line);border-radius:12px;padding:14px 16px;background:var(--fact-bg);display:grid;gap:6px}
+.big2 .lbl{font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+.big2 .val{font:700 40px/1 var(--display);letter-spacing:-.02em;color:var(--ink-3)}
+.big2 .me .val{color:var(--signal)}
+.big2 .trk{height:8px;border-radius:4px;background:var(--inset);overflow:hidden}
+.big2 .fill{height:100%;border-radius:4px;background:var(--ink-4)}
+.big2 .me .fill{background:var(--signal)}
+.big2 .me{border-color:var(--signal)}
+/* Why: numbered, evenly spaced, one sentence each. */
+ol.why-list{margin:0;padding:0;list-style:none;counter-reset:w;display:grid;gap:10px}
+ol.why-list li{counter-increment:w;display:grid;grid-template-columns:24px minmax(0,1fr);gap:10px;font-size:15px;line-height:1.5}
+ol.why-list li::before{content:counter(w);width:24px;height:24px;border-radius:50%;background:var(--inset);color:var(--ink-2);display:grid;place-items:center;font:600 12px var(--display);margin-top:1px}
+@media (max-width:760px){ .big2 .val{font-size:32px} }

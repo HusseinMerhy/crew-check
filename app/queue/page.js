@@ -28,7 +28,7 @@ function Answer({ text }) {
           {a.verdicts.map((v, i) => <div className="fact" key={i}><div className="lbl">{v.label}</div><div className={`v ${valueClass(v.value)}`}>{v.value}</div></div>)}
         </div>
       )}
-      {a.body && <ul className="points">{pointsOf(a.body).map((x, i) => <li key={i}>{x}</li>)}</ul>}
+      {a.body && <ol className="why-list">{pointsOf(a.body).map((x, i) => <li key={i}>{x}</li>)}</ol>}
       {a.worth && <div className="attn"><b>Check:</b> {a.worth}</div>}
       {a.permit && <div className="note warn"><b>Permit:</b> {a.permit}</div>}
     </>
