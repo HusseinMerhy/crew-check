@@ -138,10 +138,12 @@ export default function Queue() {
               <button className="x" aria-label="Close" onClick={() => setOpen(null)}><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
             </div>
             <div className="db">
-              <div className="field">
-                <label>Quote</label>
-                {sel.quote ? <div className="quotebox">{sel.quote}</div> : <div className="small muted">{sel.quote == null ? "Not loaded yet: refresh in a moment." : "This task has no Client Quote in ClickUp."}</div>}
-              </div>
+              {sel.quote
+                ? <details className="quote-fold" key={sel.task_id}>
+                    <summary><b>Quote</b><span>{quoteSnippet(sel.quote, 70)}</span></summary>
+                    <div className="quotebox">{sel.quote}</div>
+                  </details>
+                : <div className="small muted"><b>Quote:</b> {sel.quote == null ? "not loaded yet, refresh in a moment." : "this task has no Client Quote in ClickUp."}</div>}
               {sel.ok
                 ? <Answer text={sel.answer} />
                 : <div className="lint bad">Check failed: {sel.problem}. It is tried again on the next run.</div>}

@@ -280,3 +280,13 @@ ul.points li::marker{color:var(--ink-4)}
 .quotebox{white-space:pre-wrap;font-size:14px;line-height:1.55;background:var(--inset);border:1px solid var(--line-2);border-radius:10px;padding:12px 14px;max-height:320px;overflow:auto}
 td.snip{max-width:340px;color:var(--ink-2);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:980px){ td.snip{max-width:180px} }
+
+/* The quote in the queue side panel: one line until opened. */
+details.quote-fold{border:1px solid var(--line-2);border-radius:10px;background:var(--sheet)}
+details.quote-fold>summary{cursor:pointer;list-style:none;display:flex;gap:10px;align-items:center;padding:10px 14px;font-size:14px;min-width:0}
+details.quote-fold>summary::-webkit-details-marker{display:none}
+details.quote-fold>summary::before{content:"▸";color:var(--ink-3)}
+details.quote-fold[open]>summary::before{content:"▾"}
+details.quote-fold>summary span{color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+details.quote-fold[open]>summary span{display:none}
+details.quote-fold .quotebox{border:0;border-top:1px solid var(--line-2);border-radius:0 0 10px 10px}
