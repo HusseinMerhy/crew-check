@@ -1,6 +1,6 @@
 // Unit tests for the Vol 2 pieces that run without a network: the job type, the history lookup
 // and the read-only ClickUp import's parsing. No API credit: node tests/vol2.test.mjs
-import { jobOf, lookup, historyLine, MIN_QUOTES } from "../lib/history.js";
+import { jobOf, lookup, lookupJob, historyLine, clientsOf, MIN_QUOTES } from "../lib/history.js";
 import { parseTaskRef, fieldText } from "../lib/clickup.js";
 import { taskIdOf, isWaiting, waitingStatuses } from "../lib/webhook.js";
 import { syncQuotes, fillQuotes, MAX_PER_RUN } from "../lib/sync.js";
@@ -78,7 +78,7 @@ let out = await syncQuotes({ list, sql: db, check: okCheck, history: H });
 eq("first run checks the two real quotes", [out.checked, out.no_quote, out.unchanged], [2, 1, 0]);
 eq("stores the headline", db.rows.get("t1")[8], "The second tech is justified: this job needs two pairs of hands.");
 eq("stores the state from ClickUp", db.rows.get("t3")[6], "TX");
-eq("stores the entity history line", db.rows.get("t1")[10], "BKR quoted a second tech on 80% of 30 past door repair or replacement quotes (all entities: 70%).");
+eq("stores the entity history line", db.rows.get("t1")[10], "BKR: a second tech on 80% of 30 past door repair or replacement quotes (all quotes: 70%).");
 out = await syncQuotes({ list, sql: db, check: okCheck, history: H });
 eq("second run skips unchanged quotes", [out.checked, out.unchanged, checks], [0, 2, 2]);
 pages[0][0] = quoteTask("t1", hinge + ", now with a new step");
@@ -91,7 +91,7 @@ db.rows.get("t3")[13] = undefined; db.rows.get("t3")[14] = undefined;
 const before = checks;
 out = await syncQuotes({ list, sql: db, check: okCheck, history: H });
 eq("backfills the job type and quote without a new check", [db.rows.get("t3")[13], db.rows.get("t3")[14], checks - before], ["Door repair or replacement", hinge + " again", 0]);
-eq("history line from entity and job", historyLine(H, "BKR", "Door repair or replacement"), "BKR quoted a second tech on 80% of 30 past door repair or replacement quotes (all entities: 70%).");
+eq("history line from entity and job", historyLine(H, "BKR", "Door repair or replacement"), "BKR: a second tech on 80% of 30 past door repair or replacement quotes (all quotes: 70%).");
 eq("no history line for an entity without numbers", historyLine(H, "SFM", "Door repair or replacement"), null);
 const money = fakeDb();
 await syncQuotes({ list: async () => ({ tasks: [quoteTask("p1", hinge + ". Total: $1,270.24")], last: true }), sql: money, check: okCheck, history: null });
@@ -125,6 +125,21 @@ eq("no quote given keeps the tape", toneOf("This quote doesn't show a reason for
 const phased = parseAnswer("Incurred:\nThe second tech is justified: this job needs two pairs of hands.\nStep 2 needs two people.\nOSHA: No | Safety: No | Two-person step: Yes");
 eq("phase label skipped to find the headline", phased.headline, "The second tech is justified: this job needs two pairs of hands.");
 eq("phase label on the same line", parseAnswer("Incurred: OSHA may require a second tech here, if X.\nOSHA: Need X | Safety: No | Two-person step: No").headline, "OSHA may require a second tech here, if X.");
+
+// per client, and per entity with that client, in the packed [n, t2, t3, reason, t2h] rows
+const P = {
+  everyone: { all: [100, 50, 5, 50, 3], jobs: { "Door repair or replacement": [50, 70, 2, 80, 3] } },
+  entities: { BKR: { all: [60, 60, 5, 50, 3], jobs: { "Door repair or replacement": [30, 80, 2, 88, 3] } } },
+  clients: { EMCOR: { all: [40, 75, 1, 90, 3], jobs: { "Door repair or replacement": [25, 76, 0, 90, 3] } } },
+  pairs: { "BKR|EMCOR": { all: [35, 78, 1, 90, 3], jobs: { "Door repair or replacement": [22, 82, 0, 91, 3] } } },
+};
+const L = lookupJob(P, "BKR", "Door repair or replacement", "emcor");
+eq("client matched without case", L.client, "EMCOR");
+eq("packed rows read", [L.entity.t2, L.clientRow.t2, L.pair.t2, L.everyone.t2], [80, 76, 82, 70]);
+eq("line prefers entity with client", historyLine(P, "BKR", "Door repair or replacement", "EMCOR"), "BKR with EMCOR: a second tech on 82% of 22 past door repair or replacement quotes (all quotes: 70%).");
+eq("line falls back to the client", historyLine(P, "SFM", "Door repair or replacement", "EMCOR"), "EMCOR: a second tech on 76% of 25 past door repair or replacement quotes (all quotes: 70%).");
+eq("unknown client falls back to the entity", historyLine(P, "BKR", "Door repair or replacement", "Nobody"), "BKR: a second tech on 80% of 30 past door repair or replacement quotes (all quotes: 70%).");
+eq("client list", clientsOf(P), ["EMCOR"]);
 
 // the ClickUp webhook: where the task id is, and which statuses count as waiting
 eq("automation payload", taskIdOf({ auto_id: "x", payload: { id: "86a2tqk0c", name: "WO" } }), "86a2tqk0c");

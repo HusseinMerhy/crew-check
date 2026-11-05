@@ -310,3 +310,7 @@ ol.why-list li::before{content:counter(w);width:24px;height:24px;border-radius:5
 /* A Tech 1 only quote: nothing to justify, so a quiet grey instead of the tape. */
 .tone-wait .badge{background:var(--wait-soft);color:var(--wait)}
 .verdict-card.tone-wait{--tone:var(--line-3)}
+
+/* Three history numbers in a row when the client is known. */
+.big2.n3{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:760px){ .big2.n3{grid-template-columns:minmax(0,1fr)} }
