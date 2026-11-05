@@ -13,10 +13,13 @@
 // --json writes the numbers for ENTITY_HISTORY in Vercel. That file is company data: keep it
 // out of git (the repository is public).
 import fs from "node:fs";
-import { ENTITIES, jobOf } from "../lib/history.js";
+import { ENTITIES, jobOf, MIN_QUOTES } from "../lib/history.js";
 
 // ClickUp's own export names the column "21. Comp (drop down)"; save that sheet as CSV first.
 const COMP_COLUMNS = ["21. Comp (drop down)", "21. Comp", "Comp"];
+// The client (FM) column. With it the script also builds history per client, and per entity
+// with that client ("BKR with EMCOR").
+const FM_COLUMNS = ["22. FM (drop down)", "22. FM", "FM"];
 const WO_RULES = [
   // 57 of 57 sampled quotes in these two formats were BKR (Nov 3, 2026). Checked on the full
   // Nov 4 export with the Comp column: 13,002 of 13,293 (98%), so prefer the column.
@@ -71,6 +74,7 @@ if (!allFile || !tech2File) {
 const all = readCsv(allFile);
 const tech2 = new Map(readCsv(tech2File).map((r) => [r["ClickUp task ID"], r]));
 const compCol = COMP_COLUMNS.find((c) => all.length && c in all[0]) ?? null;
+const fmCol = FM_COLUMNS.find((c) => all.length && c in all[0]) ?? null;
 
 // How far the keyword job type can be trusted: agreement with the Tech 2 export's own labels.
 let agree = 0, compared = 0;
@@ -102,6 +106,11 @@ for (const q of all) {
   add("everyone", job, q, t);
   const e = entityOf(q, compCol);
   if (e) add(e, job, q, t); else unassigned++;
+  const fm = fmCol ? q[fmCol].trim() : "";
+  if (fm) {
+    add(`c:${fm}`, job, q, t);
+    if (e) add(`p:${e}|${fm}`, job, q, t);
+  }
 }
 
 const rowOf = (s) => ({ n: s.n, t2: share(s.t2, s.n), t3: share(s.t3, s.t2), reason: share(s.reason, s.t2), t2h: median(s.h2) });
@@ -113,8 +122,21 @@ const out = {
   built: new Date().toISOString().slice(0, 10),
   source: `${all.length} quotes, ${tech2.size} with a Tech 2; entity from ${compCol ? `the "${compCol}" column` : "work order format (BKR only)"}`,
   everyone: shape(raw.get("everyone")),
-  entities: Object.fromEntries([...raw].filter(([g]) => g !== "everyone").map(([g, m]) => [g, shape(m)])),
+  entities: Object.fromEntries([...raw].filter(([g]) => g !== "everyone" && !/^[cp]:/.test(g)).map(([g, m]) => [g, shape(m)])),
 };
+// Clients and entity-client pairs keep only what the screen can show (at least MIN_QUOTES quotes),
+// so the whole file still fits in one Vercel environment variable.
+const pruned = (prefix) => Object.fromEntries([...raw]
+  .filter(([g, m]) => g.startsWith(prefix) && m.get("*").n >= MIN_QUOTES)
+  .map(([g, m]) => {
+    const h = shape(m);
+    h.jobs = Object.fromEntries(Object.entries(h.jobs).filter(([, r]) => r.n >= MIN_QUOTES));
+    return [g.slice(prefix.length), h];
+  }));
+if (fmCol) {
+  out.clients = pruned("c:");
+  out.pairs = pruned("p:");
+}
 
 console.log(`${out.source}. Quotes with no entity: ${unassigned}.`);
 console.log(`Keyword job type matches the Tech 2 export's label on ${share(agree, compared)}% of ${compared} quotes.\n`);
@@ -129,9 +151,21 @@ for (const job of ["*", ...jobs]) {
   });
   console.log([job === "*" ? "All jobs" : job, ...cols].join("\t"));
 }
+if (fmCol) {
+  const top = Object.entries(out.clients).sort((a, b) => b[1].all.n - a[1].all.n).slice(0, 15);
+  console.log(`\nClients with at least ${MIN_QUOTES} quotes: ${Object.keys(out.clients).length}; entity-client pairs: ${Object.keys(out.pairs).length}. Largest:`);
+  for (const [c, h] of top) console.log(`  ${c}\t${h.all.n} quotes\t${h.all.t2}% with a Tech 2\treason written ${h.all.reason ?? "-"}%`);
+}
 console.log("\nAn invoiced quote may have been revised before it was accepted; the export keeps only the");
 console.log("final version, so this shows what was accepted, not what was refused.");
 if (jsonOut) {
-  fs.writeFileSync(jsonOut, JSON.stringify(out));
+  // Rows go out as [n, t2, t3, reason, t2h] (lib/history.js reads both shapes): about 40% smaller,
+  // which keeps the whole file well inside Vercel's 64 KB for all environment variables together.
+  const pack = (h) => ({ all: packRow(h.all), jobs: Object.fromEntries(Object.entries(h.jobs).map(([k, r]) => [k, packRow(r)])) });
+  const packRow = (r) => [r.n, r.t2, r.t3, r.reason, r.t2h];
+  const packAll = (o) => Object.fromEntries(Object.entries(o).map(([k, h]) => [k, pack(h)]));
+  const packed = { built: out.built, source: out.source, v: 2, everyone: pack(out.everyone), entities: packAll(out.entities) };
+  if (out.clients) { packed.clients = packAll(out.clients); packed.pairs = packAll(out.pairs); }
+  fs.writeFileSync(jsonOut, JSON.stringify(packed));
   console.log(`\nWrote ${jsonOut} (${fs.statSync(jsonOut).size} bytes). Paste its contents into Vercel as ENTITY_HISTORY. Do not commit it.`);
 }

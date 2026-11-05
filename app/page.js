@@ -3,7 +3,7 @@
 // the answer on the right: the verdict, the entity's history, and the rule cards behind it.
 import { useEffect, useState } from "react";
 import { embedQuote } from "../lib/embed";
-import { ENTITIES, lookup, MIN_QUOTES } from "../lib/history";
+import { ENTITIES, clientsOf, lookup, MIN_QUOTES } from "../lib/history";
 import { parseAnswer, pointsOf, toneOf, valueClass } from "../lib/answer";
 
 const STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","PR"];
@@ -77,43 +77,50 @@ function Why({ res }) {
 }
 
 // Past practice from our own quotes, worked out in code, never by the model: it sits beside the
-// answer and never changes it.
-function History({ entity, quote, history }) {
+// answer and never changes it. Up to three numbers, most specific first: this entity with this
+// client, the client across all entities, then all quotes.
+function History({ entity, client, quote, history }) {
   const label = ENTITIES.find((e) => e.code === entity)?.label || entity;
-  const h = history?.ok ? lookup(history.history, entity, quote) : null;
+  const h = history?.ok ? lookup(history.history, entity, quote, client) : null;
   let body;
   if (!history) body = <div className="row muted"><span className="spin" /> Loading</div>;
   else if (!history.ok) body = <div className="muted">{history.problem}</div>;
-  else if (!h.hasEntity) body = <div className="muted">No numbers for {label} yet.</div>;
-  else if (!h.entity) body = <div className="muted">Too few past {h.job.toLowerCase()} quotes (under {MIN_QUOTES}).</div>;
-  else body = (
-    <div className="stack">
-      <div className="big2">
-        <div className="me">
-          <div className="lbl">{label}</div>
-          <div className="val num">{h.entity.t2}%</div>
-          <div className="trk"><div className="fill" style={{ width: `${h.entity.t2}%` }} /></div>
+  else {
+    const cells = [
+      h.pair && { lbl: `${label} with ${h.client}`, r: h.pair },
+      !h.pair && h.entity && { lbl: label, r: h.entity },
+      h.clientRow && { lbl: `${h.client}, all entities`, r: h.clientRow },
+      h.everyone && { lbl: "All quotes", r: h.everyone },
+    ].filter(Boolean);
+    const main = cells.length > 1 ? cells[0] : null;
+    if (!main) {
+      const who = [entity && label, client].filter(Boolean).join(" with ");
+      body = <div className="muted">Too few past {h.job.toLowerCase()} quotes for {who || "this"} (under {MIN_QUOTES}).</div>;
+    } else body = (
+      <div className="stack">
+        <div className={`big2 n${cells.length}`}>
+          {cells.map((c, i) => (
+            <div className={i === 0 ? "me" : ""} key={c.lbl}>
+              <div className="lbl">{c.lbl}</div>
+              <div className="val num">{c.r.t2}%</div>
+              <div className="trk"><div className="fill" style={{ width: `${c.r.t2}%` }} /></div>
+            </div>
+          ))}
         </div>
-        {h.everyone && (
-          <div>
-            <div className="lbl">All entities</div>
-            <div className="val num">{h.everyone.t2}%</div>
-            <div className="trk"><div className="fill" style={{ width: `${h.everyone.t2}%` }} /></div>
-          </div>
-        )}
+        <div className="row">
+          <span className="pill wait num">{main.r.n.toLocaleString()} past quotes</span>
+          <span className="pill wait num">Reason written {main.r.reason ?? "?"}%</span>
+          {main.r.t2h != null && <span className="pill wait num">Tech 2 usually {main.r.t2h} h</span>}
+          {main.r.t3 > 0 && <span className="pill wait num">3rd tech {main.r.t3}%</span>}
+        </div>
+        <div className="small muted">Share of past quotes that billed a 2nd tech. Past practice, not a rule.</div>
       </div>
-      <div className="row">
-        <span className="pill wait num">{h.entity.n.toLocaleString()} past quotes</span>
-        <span className="pill wait num">Reason written {h.entity.reason ?? "?"}%</span>
-        {h.entity.t2h != null && <span className="pill wait num">Tech 2 usually {h.entity.t2h} h</span>}
-        {h.entity.t3 > 0 && <span className="pill wait num">3rd tech {h.entity.t3}%</span>}
-      </div>
-      <div className="small muted">Past practice, not a rule.</div>
-    </div>
-  );
+    );
+  }
+  const who = h?.client && entity ? `${label} with ${h.client}` : h?.client || label || client;
   return (
     <div className="card">
-      <div className="hd"><h3>How often {label} gets a 2nd tech</h3>{h && <span className="pill sig">{h.job}</span>}</div>
+      <div className="hd"><h3>How often {who} gets a 2nd tech</h3>{h && <span className="pill sig">{h.job}</span>}</div>
       <div className="bd">{body}</div>
     </div>
   );
@@ -175,6 +182,11 @@ export default function Home() {
   const [stage, setStage] = useState("");
   const [res, setRes] = useState(null);
   const [history, setHistory] = useState(null);
+  const [client, setClient] = useState("");
+  // Loaded once, up front, so the Client box can suggest the names the history knows.
+  useEffect(() => {
+    fetch("/api/history").then((r) => r.json()).then(setHistory).catch(() => setHistory({ ok: false, problem: "Could not load the history." }));
+  }, []);
   const [taskRef, setTaskRef] = useState("");
   const [imported, setImported] = useState(null);
 
@@ -192,6 +204,7 @@ export default function Home() {
         setQuote(d.quote || "");
         setState(STATES.includes(d.state) ? d.state : "");
         setEntity(ENTITIES.some((x) => x.code === d.entity) ? d.entity : "");
+        setClient(d.fm || "");
         setRes(null);
       }
       setImported(d);
@@ -200,7 +213,6 @@ export default function Home() {
 
   async function check() {
     setBusy(true); setRes(null);
-    if (entity && !history) fetch("/api/history").then((r) => r.json()).then(setHistory).catch(() => setHistory({ ok: false, problem: "Could not load the history." }));
     let vector = null;
     try { setStage("Reading the quote"); vector = await embedQuote(quote); }
     catch { vector = null; }
@@ -267,6 +279,11 @@ export default function Home() {
                     {ENTITIES.map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}
                   </select>
                 </div>
+                <div className="field full">
+                  <label htmlFor="client">Client</label>
+                  <input id="client" list="clients" value={client} onChange={(e) => setClient(e.target.value)} placeholder="EMCOR, Advanced, 7-Eleven..." />
+                  <datalist id="clients">{history?.ok && clientsOf(history.history).map((c) => <option key={c} value={c} />)}</datalist>
+                </div>
               </div>
               <button className="btn pri lg wide" onClick={check} disabled={busy || tooShort}>
                 {busy ? <><span className="spin" />Checking</> : "Check"}
@@ -292,7 +309,7 @@ export default function Home() {
           {res?.ok && (
             <>
               <Verdict res={res} />
-              {entity && <History entity={entity} quote={quote} history={history} />}
+              {(entity || client) && <History entity={entity} client={client} quote={quote} history={history} />}
               <Why res={res} />
               <RuleCards cards={res.cards} />
               <SimilarJobs res={res} />

@@ -23,7 +23,7 @@ export async function GET() {
        from auto_checks order by checked_at desc limit 200`);
     const token = process.env.CLICKUP_API_TOKEN;
     if (token) await fillQuotes({ rows, sql, getTask: (id) => getTask({ token, id }) });
-    for (const r of rows) r.history = (r.job && historyLine(history, r.entity, r.job)) || r.history;
+    for (const r of rows) r.history = (r.job && historyLine(history, r.entity, r.job, r.fm)) || r.history;
     return Response.json({ ok: true, rows, ...flags, history_entities: Object.keys(history?.entities || {}), history_built: history?.built || null });
   } catch (e) {
     // The table appears on the first run.

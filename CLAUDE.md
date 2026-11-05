@@ -340,6 +340,15 @@ GET requests only and never reads the task description (work orders have carried
 details there). The owner's rule says ClickUp is read-only: this keeps to it, but confirm
 with the owner before turning the token on, since it is the first code that reads ClickUp.
 
+### Per-client history (the FM)
+
+With the "22. FM" column the script also writes `clients` (each FM across all entities) and
+`pairs` ("BKR|EMCOR"), keeping only groups and job types with at least 20 quotes. Rows are
+packed as `[n, t2, t3, reason, t2h]`; `lib/history.js` reads both shapes. The Nov 4 export
+gives 57 clients and 62 pairs in about 22 KB, inside Vercel's 64 KB for all environment
+variables together. The check page shows the most specific number first (entity with client,
+then client, then all quotes); Import fills the Client box from the FM field.
+
 ### Vol 2 daily automatic check (`/queue`)
 
 Once a day Vercel Cron (`vercel.json`) calls `/api/clickup/sync`. It lists the tasks in
