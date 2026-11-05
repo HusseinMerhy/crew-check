@@ -3,6 +3,7 @@
 import { jobOf, lookup, historyLine, MIN_QUOTES } from "../lib/history.js";
 import { parseTaskRef, fieldText } from "../lib/clickup.js";
 import { syncQuotes, fillQuotes, MAX_PER_RUN } from "../lib/sync.js";
+import { parseAnswer, secondTechHours, toneOf } from "../lib/answer.js";
 
 let pass = 0, fail = 0;
 const eq = (name, got, want) => {
@@ -110,6 +111,19 @@ eq("a failed check is stored without a hash, so the next run retries it", [out.f
 const many = Array.from({ length: MAX_PER_RUN + 3 }, (_, i) => quoteTask(`m${i}`, hinge + ` #${i}`));
 out = await syncQuotes({ list: async () => ({ tasks: many, last: true }), sql: fakeDb(), check: okCheck, history: null });
 eq("caps a run and says more are waiting", [out.checked, out.left_for_next_run], [MAX_PER_RUN, true]);
+
+// second tech hours, in the forms real ClickUp quotes use
+eq("Tech 2 - 4 hrs", secondTechHours("Labor: Tech 1 - 4 hrs; Tech 2 - 4 hrs"), 4);
+eq("8 hours labor Tech 2", secondTechHours("-8 hours labor Tech 1 $[removed]\n-8 hours labor Tech 2 $[removed]"), 8);
+eq("7 hours labor helper", secondTechHours("-7 hours labor tech:$455\n-7 hours labor helper: $182"), 7);
+eq("Tech 1 only", secondTechHours("Labor hour:\n-3 hours labor Tech 1 $[removed]"), null);
+eq("no reason on a Tech 1 only quote is not a problem", toneOf("This quote doesn't show a reason for a second tech.", "-3 hours labor Tech 1").tone, "wait");
+eq("no reason with a Tech 2 billed needs a person", toneOf("This quote doesn't show a reason for a second tech.", "-3 hours labor Tech 2").tone, "tape");
+eq("no quote given keeps the tape", toneOf("This quote doesn't show a reason for a second tech.").tone, "tape");
+// a phased answer opens with the phase name
+const phased = parseAnswer("Incurred:\nThe second tech is justified: this job needs two pairs of hands.\nStep 2 needs two people.\nOSHA: No | Safety: No | Two-person step: Yes");
+eq("phase label skipped to find the headline", phased.headline, "The second tech is justified: this job needs two pairs of hands.");
+eq("phase label on the same line", parseAnswer("Incurred: OSHA may require a second tech here, if X.\nOSHA: Need X | Safety: No | Two-person step: No").headline, "OSHA may require a second tech here, if X.");
 
 console.log(`${pass}/${pass + fail} passed`);
 process.exit(fail ? 1 : 0);
