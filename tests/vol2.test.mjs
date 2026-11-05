@@ -53,6 +53,9 @@ eq("dropdown by orderindex", fieldText(task, "State"), "OH");
 eq("dropdown by option id", fieldText(task, "21. Comp"), "BKR");
 eq("unset field", fieldText(task, "Trade"), "");
 eq("missing field", fieldText(task, "Store"), "");
+eq("plain field names read too", (await import("../lib/clickup.js")).taskFields({ id: "t", name: "n", status: { status: "quote ready" }, custom_fields: [
+  { name: "Comp", type: "short_text", value: "SFM" }, { name: "FM", type: "short_text", value: "Flynn" }, { name: "State", type: "short_text", value: "FL" },
+  { name: "Client Quote", type: "text", value: "Tech Reported: mirror" }] }).entity + "/" + "Flynn", "SFM/Flynn");
 
 // the daily sync loop, with ClickUp, the database and the check faked
 const quoteTask = (id, text, state = 34) => ({ id, name: `WO ${id}`, url: "", status: { status: "quote ready" }, custom_fields: [
@@ -151,6 +154,8 @@ eq("default statuses", waitingStatuses({}), ["quote ready", "!! waiting for appr
 eq("statuses from settings", waitingStatuses({ CLICKUP_SYNC_STATUSES: "quote ready, waiting for quote" }), ["quote ready", "waiting for quote"]);
 eq("waiting, any case", isWaiting({ status: { status: "Quote Ready" } }, waitingStatuses({})), true);
 eq("not waiting", isWaiting({ status: { status: "invoiced" } }, waitingStatuses({})), false);
+eq("the !! flag is ignored", isWaiting({ status: { status: "waiting for approval" } }, waitingStatuses({})), true);
+eq("a misspelt status is not guessed", isWaiting({ status: { status: "quote read" } }, waitingStatuses({})), false);
 
 console.log(`${pass}/${pass + fail} passed`);
 process.exit(fail ? 1 : 0);
