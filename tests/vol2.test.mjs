@@ -2,6 +2,7 @@
 // and the read-only ClickUp import's parsing. No API credit: node tests/vol2.test.mjs
 import { jobOf, lookup, historyLine, MIN_QUOTES } from "../lib/history.js";
 import { parseTaskRef, fieldText } from "../lib/clickup.js";
+import { taskIdOf, isWaiting, waitingStatuses } from "../lib/webhook.js";
 import { syncQuotes, fillQuotes, MAX_PER_RUN } from "../lib/sync.js";
 import { parseAnswer, secondTechHours, toneOf } from "../lib/answer.js";
 
@@ -124,6 +125,17 @@ eq("no quote given keeps the tape", toneOf("This quote doesn't show a reason for
 const phased = parseAnswer("Incurred:\nThe second tech is justified: this job needs two pairs of hands.\nStep 2 needs two people.\nOSHA: No | Safety: No | Two-person step: Yes");
 eq("phase label skipped to find the headline", phased.headline, "The second tech is justified: this job needs two pairs of hands.");
 eq("phase label on the same line", parseAnswer("Incurred: OSHA may require a second tech here, if X.\nOSHA: Need X | Safety: No | Two-person step: No").headline, "OSHA may require a second tech here, if X.");
+
+// the ClickUp webhook: where the task id is, and which statuses count as waiting
+eq("automation payload", taskIdOf({ auto_id: "x", payload: { id: "86a2tqk0c", name: "WO" } }), "86a2tqk0c");
+eq("API webhook", taskIdOf({ event: "taskStatusUpdated", task_id: "86akpqfkk" }), "86akpqfkk");
+eq("hand-made test call", taskIdOf({ id: "86a2b8cu8" }), "86a2b8cu8");
+eq("no id", taskIdOf({ hello: 1 }), null);
+eq("junk id refused", taskIdOf({ id: "../../etc" }), null);
+eq("default statuses", waitingStatuses({}), ["quote ready", "!! waiting for approval"]);
+eq("statuses from settings", waitingStatuses({ CLICKUP_SYNC_STATUSES: "quote ready, waiting for quote" }), ["quote ready", "waiting for quote"]);
+eq("waiting, any case", isWaiting({ status: { status: "Quote Ready" } }, waitingStatuses({})), true);
+eq("not waiting", isWaiting({ status: { status: "invoiced" } }, waitingStatuses({})), false);
 
 console.log(`${pass}/${pass + fail} passed`);
 process.exit(fail ? 1 : 0);
