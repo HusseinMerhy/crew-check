@@ -1,7 +1,7 @@
 "use client";
 // Check a quote: everything on one screen. The quote on the left (import from ClickUp, or paste),
 // the answer on the right: the verdict, the entity's history, and the rule cards behind it.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { embedQuote } from "../lib/embed";
 import { ENTITIES, lookup, MIN_QUOTES } from "../lib/history";
 import { parseAnswer, pointsOf, toneOf, valueClass } from "../lib/answer";
@@ -43,10 +43,34 @@ function Verdict({ res }) {
             ))}
           </div>
         )}
-        {a.body && <ul className="points">{pointsOf(a.body).map((x, i) => <li key={i}>{x}</li>)}</ul>}
         {a.worth && <div className={t.tone === "tape" ? "attn" : "note sig"}><b>Check:</b> {a.worth}</div>}
         {a.permit && <div className="note warn"><b>Permit:</b> {a.permit}</div>}
         {a.state && <div className="small muted">{a.state}</div>}
+      </div>
+    </div>
+  );
+}
+
+// The explanation as numbered points in a card of its own: the first few show, the rest are one
+// click away, so a long answer never buries the verdict or the history.
+const SHOW_POINTS = 3;
+function Why({ res }) {
+  const a = parseAnswer(res.answer);
+  const points = a.ok ? pointsOf(a.body) : [];
+  const [all, setAll] = useState(false);
+  useEffect(() => setAll(false), [res]);
+  if (!points.length) return null;
+  const shown = all ? points : points.slice(0, SHOW_POINTS);
+  return (
+    <div className="card">
+      <div className="hd"><h3>Why</h3></div>
+      <div className="bd stack">
+        <ol className="why-list">{shown.map((x, i) => <li key={i}>{x}</li>)}</ol>
+        {points.length > SHOW_POINTS && (
+          <button className="btn ghost sm" style={{ alignSelf: "flex-start" }} onClick={() => setAll(!all)}>
+            {all ? "Show less" : `Show all ${points.length}`}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -64,18 +88,32 @@ function History({ entity, quote, history }) {
   else if (!h.entity) body = <div className="muted">Too few past {h.job.toLowerCase()} quotes (under {MIN_QUOTES}).</div>;
   else body = (
     <div className="stack">
-      <div className="cmp">
-        <div className="r me"><span>{label}</span><div className="trk"><div className="fill" style={{ width: `${h.entity.t2}%` }} /></div><b className="num">{h.entity.t2}%</b></div>
-        {h.everyone && <div className="r"><span className="muted">All entities</span><div className="trk"><div className="fill" style={{ width: `${h.everyone.t2}%` }} /></div><span className="num muted">{h.everyone.t2}%</span></div>}
+      <div className="big2">
+        <div className="me">
+          <div className="lbl">{label}</div>
+          <div className="val num">{h.entity.t2}%</div>
+          <div className="trk"><div className="fill" style={{ width: `${h.entity.t2}%` }} /></div>
+        </div>
+        {h.everyone && (
+          <div>
+            <div className="lbl">All entities</div>
+            <div className="val num">{h.everyone.t2}%</div>
+            <div className="trk"><div className="fill" style={{ width: `${h.everyone.t2}%` }} /></div>
+          </div>
+        )}
       </div>
-      <div className="small muted num">
-        {h.entity.n.toLocaleString()} past quotes · reason written {h.entity.reason ?? "?"}%{h.entity.t2h != null && ` · Tech 2 usually ${h.entity.t2h} h`} · past practice, not a rule
+      <div className="row">
+        <span className="pill wait num">{h.entity.n.toLocaleString()} past quotes</span>
+        <span className="pill wait num">Reason written {h.entity.reason ?? "?"}%</span>
+        {h.entity.t2h != null && <span className="pill wait num">Tech 2 usually {h.entity.t2h} h</span>}
+        {h.entity.t3 > 0 && <span className="pill wait num">3rd tech {h.entity.t3}%</span>}
       </div>
+      <div className="small muted">Past practice, not a rule.</div>
     </div>
   );
   return (
     <div className="card">
-      <div className="hd"><h3>{label}: 2nd tech accepted</h3>{h && <span className="pill sig">{h.job}</span>}</div>
+      <div className="hd"><h3>How often {label} gets a 2nd tech</h3>{h && <span className="pill sig">{h.job}</span>}</div>
       <div className="bd">{body}</div>
     </div>
   );
@@ -254,6 +292,7 @@ export default function Home() {
             <>
               <Verdict res={res} />
               {entity && <History entity={entity} quote={quote} history={history} />}
+              <Why res={res} />
               <RuleCards cards={res.cards} />
               <SimilarJobs res={res} />
               {/* Prompt caching is otherwise silent: the requests succeed either way and only the bill
