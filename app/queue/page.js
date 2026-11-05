@@ -76,8 +76,23 @@ export default function Queue() {
   const [running, setRunning] = useState(null);
   const [open, setOpen] = useState(null);
   const [filter, setFilter] = useState("all");
+  const [loading, setLoading] = useState(false);
+  const [loadedAt, setLoadedAt] = useState(null);
 
-  const load = () => fetch("/api/clickup/queue").then((r) => r.json()).then(setData).catch(() => setData({ ok: false, problem: "Could not load the results." }));
+  // Refresh reloads what is already stored; it shows it is working and when the list was read,
+  // so a click with nothing new still visibly did something.
+  async function load() {
+    setLoading(true);
+    try {
+      const r = await fetch("/api/clickup/queue", { cache: "no-store" });
+      setData(await r.json());
+      setLoadedAt(new Date());
+    } catch {
+      setData({ ok: false, problem: "Could not load the results." });
+    } finally {
+      setLoading(false);
+    }
+  }
   useEffect(() => { load(); }, []);
 
   async function runNow() {
@@ -103,14 +118,17 @@ export default function Queue() {
           <p>Waiting ClickUp quotes, checked daily.</p>
         </div>
         <div className="act">
-          <button className="btn" onClick={load}>Refresh</button>
-          {data?.manual && <button className="btn pri" onClick={runNow} disabled={running?.busy}>{running?.busy ? <><span className="spin" />Checking</> : "Run check now"}</button>}
+          <button className="btn" onClick={load} disabled={loading} title="Reload the stored results">{loading ? <><span className="spin" />Refreshing</> : "Refresh"}</button>
+          {data?.manual && <button className="btn pri" onClick={runNow} disabled={running?.busy} title="Read ClickUp now and check new quotes">{running?.busy ? <><span className="spin" />Checking</> : "Run check now"}</button>}
         </div>
       </div>
 
-      {data?.ok && (data.history_entities?.length
-        ? <div className="small muted">History: {data.history_entities.join(", ")}</div>
-        : <div className="small muted">No history loaded</div>)}
+      {data?.ok && (
+        <div className="small muted">
+          {data.history_entities?.length ? `History: ${data.history_entities.join(", ")}` : "No history loaded"}
+          {loadedAt && ` · Updated ${loadedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`}
+        </div>
+      )}
       {data && !data.auto && <div className="attn"><b>Daily run is off.</b> Set CRON_SECRET in Vercel.</div>}
       {running && !running.busy && (running.ok
         ? <div className="lint ok">Checked {running.checked} · failed {running.failed}{running.left_for_next_run ? " · more next run" : ""}</div>
