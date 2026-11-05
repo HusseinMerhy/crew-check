@@ -38,6 +38,39 @@ function Answer({ text }) {
   );
 }
 
+const when = (t) => new Date(t).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+const hookTone = (o) => (/^Checked|^Already/.test(o) ? "ok" : /^Received/.test(o) ? "wait" : /Failed|failed/.test(o) ? "close" : "tape");
+
+// The last calls from the ClickUp webhook: folded to one line, opened to see each call's outcome.
+function HookLog({ calls }) {
+  const last = calls[0];
+  return (
+    <details className="card fold">
+      <summary className="hd">
+        <h3>Webhook</h3>
+        <span className="small muted">{last ? <>Last call {when(last.received_at)}: {last.outcome}</> : "No calls yet"}</span>
+      </summary>
+      {calls.length > 0 && (
+        <div className="tbl-wrap">
+          <table>
+            <thead><tr><th>Received</th><th>Task</th><th>Outcome</th><th>Why</th></tr></thead>
+            <tbody>
+              {calls.map((c) => (
+                <tr key={c.id}>
+                  <td className="muted small num" style={{ whiteSpace: "nowrap" }}>{when(c.received_at)}</td>
+                  <td className="mono" style={{ whiteSpace: "nowrap" }}>{c.task_name || c.task_id || <span className="muted">-</span>}</td>
+                  <td><span className={`pill ${hookTone(c.outcome)}`}><i />{c.outcome}</span></td>
+                  <td className="small">{c.detail || <span className="muted">-</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </details>
+  );
+}
+
 export default function Queue() {
   const [data, setData] = useState(null);
   const [running, setRunning] = useState(null);
@@ -119,7 +152,7 @@ export default function Queue() {
                       <td>{r.fm || <span className="muted">-</span>}</td>
                       <td>{r.state || <span className="muted">-</span>}</td>
                       <td>{r.ok ? <span className={`pill ${t.cls}`}><i />{t.label}</span> : <span className="pill close"><i />Failed</span>}</td>
-                      <td className="muted small num">{new Date(r.checked_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
+                      <td className="muted small num">{when(r.checked_at)}</td>
                     </tr>
                   );
                 })}
@@ -128,6 +161,8 @@ export default function Queue() {
           )}
         </div>
       </div>
+
+      {data?.hook && <HookLog calls={data.webhook || []} />}
 
       <div className={`scrim${sel ? " show" : ""}`} onClick={() => setOpen(null)} />
       <aside className={`drawer${sel ? " show" : ""}`} aria-hidden={!sel}>

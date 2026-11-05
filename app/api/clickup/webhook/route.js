@@ -14,7 +14,7 @@ import { POST as runCheck } from "../../check/route";
 import { getTask } from "../../../../lib/clickup";
 import { syncQuotes } from "../../../../lib/sync";
 import { getSql } from "../../../../lib/db";
-import { isWaiting, taskIdOf, waitingStatuses } from "../../../../lib/webhook";
+import { finishCall, isWaiting, logCall, outcomeOf, problemOf, readBody, shapeOf, taskIdOf, waitingStatuses } from "../../../../lib/webhook";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
@@ -36,6 +36,9 @@ export async function GET(req) {
   return refuse(req) || Response.json({ ok: true, ready: true });
 }
 
+// Writing the log must never stop a check, so a log failure is only printed to the Vercel log.
+const quietly = async (fn) => { try { return await fn(); } catch (e) { console.error("webhook log", e?.message || e); return null; } };
+
 export async function POST(req) {
   const no = refuse(req);
   if (no) return no;
@@ -43,17 +46,26 @@ export async function POST(req) {
   const token = process.env.CLICKUP_API_TOKEN, sql = getSql();
   if (!token || !sql) return Response.json({ ok: false, problem: "CLICKUP_API_TOKEN or DATABASE_URL is not set in Vercel." }, { status: 501 });
 
-  let body;
-  try { body = await req.json(); } catch { body = null; }
+  const body = readBody(await req.text().catch(() => ""));
   const id = taskIdOf(body);
   // A test call carries no task. Answer OK, so the sender sees the address works; there is
-  // simply nothing to check.
-  if (!id) return Response.json({ ok: true, test: true, note: "No task in the call: nothing to check." });
+  // simply nothing to check. The log keeps the field names, so a real call that is read wrong shows.
+  if (!id) {
+    await quietly(() => logCall(sql, { outcome: "No task in the call", detail: `It carried: ${shapeOf(body)}` }));
+    return Response.json({ ok: true, test: true, note: "No task in the call: nothing to check." });
+  }
 
+  const logId = await quietly(() => logCall(sql, { task_id: id, outcome: "Received, checking" }));
   after(async () => {
+    let name = null;
     try {
       const task = await getTask({ token, id });
-      if (!isWaiting(task, waitingStatuses())) return; // moved on already: nothing to check
+      name = task?.name || null;
+      const statuses = waitingStatuses();
+      if (!isWaiting(task, statuses)) {
+        await quietly(() => finishCall(sql, logId, { task_name: name, outcome: "Not waiting, skipped", detail: `Status is "${task?.status?.status || "none"}"; the check reads ${statuses.map((x) => `"${x}"`).join(", ")}.` }));
+        return;
+      }
       let history = null;
       try { history = process.env.ENTITY_HISTORY ? JSON.parse(process.env.ENTITY_HISTORY) : null; } catch { history = null; }
       await sql.query(`create table if not exists auto_checks (
@@ -63,15 +75,19 @@ export async function POST(req) {
       await sql.query(`alter table auto_checks add column if not exists quote text`);
       // The same loop as the daily run, given just this one task: it skips a quote already
       // checked with the same text and stores the answer for the queue.
-      await syncQuotes({
+      const r = await syncQuotes({
         list: async () => ({ tasks: [task], last: true }),
         sql, history,
         check: async (t) => (await runCheck(new Request("http://internal/api/check", {
           method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quote: t.quote, state: t.state }),
         }))).json(),
       });
+      let detail = null;
+      if (r.failed) detail = (await quietly(() => sql.query(`select problem from auto_checks where task_id = $1`, [id])))?.[0]?.problem || null;
+      await quietly(() => finishCall(sql, logId, { task_name: name, outcome: outcomeOf(r), detail }));
     } catch (e) {
       console.error("webhook check failed", id, e?.message || e);
+      await quietly(() => finishCall(sql, logId, { task_name: name, outcome: "Failed", detail: problemOf(e) }));
     }
   });
   return Response.json({ ok: true, accepted: id }, { status: 202 });

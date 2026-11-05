@@ -376,6 +376,19 @@ and runs it through `syncQuotes` with a one-task list, so it shares the daily ru
 storage. Nothing is written to ClickUp. The daily run stays as the safety net. Helpers:
 `lib/webhook.js`, tested in `tests/vol2.test.mjs`.
 
+Every call with the right secret is written to `webhook_log` (the newest 200 are kept) and the
+last 10 show in a folded "Webhook" card on `/queue`: when it came, the task, and what became of it
+("Checked", "Already checked, same quote", "Not waiting, skipped", "No Client Quote on the task",
+"No task in the call" with the body's field names, never its values, or "Failed" with the reason).
+Before the log, a failure inside `after()` reached only the Vercel console. The body is read as
+JSON, or as a form body whose fields may hold JSON, and the task id is looked for under `task_id`,
+`payload` (object or JSON string), `payload.task`, `task`, `data` and `id`.
+
+The task is read with `CLICKUP_API_TOKEN`, so the webhook can only check tasks that token's user
+can see. A task in someone's private or personal list fails with "ClickUp would not show this task
+to the tool". The Nov 5 test task (Personal List, hidden folder) is the likely case: the manual run
+at 15:20 UTC also passed it over. Test in a list the token can see.
+
 ### Two subsets will fail, by design
 
 These are not defects in the runner and not regressions. They record wanted

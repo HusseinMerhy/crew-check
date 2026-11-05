@@ -2,7 +2,7 @@
 // and the read-only ClickUp import's parsing. No API credit: node tests/vol2.test.mjs
 import { jobOf, lookup, lookupJob, historyLine, clientsOf, MIN_QUOTES } from "../lib/history.js";
 import { parseTaskRef, fieldText } from "../lib/clickup.js";
-import { taskIdOf, isWaiting, waitingStatuses } from "../lib/webhook.js";
+import { taskIdOf, isWaiting, waitingStatuses, readBody, shapeOf, problemOf, outcomeOf, logCall, finishCall } from "../lib/webhook.js";
 import { syncQuotes, fillQuotes, MAX_PER_RUN } from "../lib/sync.js";
 import { parseAnswer, secondTechHours, toneOf } from "../lib/answer.js";
 
@@ -156,6 +156,32 @@ eq("waiting, any case", isWaiting({ status: { status: "Quote Ready" } }, waiting
 eq("not waiting", isWaiting({ status: { status: "invoiced" } }, waitingStatuses({})), false);
 eq("the !! flag is ignored", isWaiting({ status: { status: "waiting for approval" } }, waitingStatuses({})), true);
 eq("a misspelt status is not guessed", isWaiting({ status: { status: "quote read" } }, waitingStatuses({})), false);
+
+// the webhook log: what a call carried, read in every shape a sender may use
+eq("JSON body", readBody('{"payload":{"id":"17tvd0tb7ba"}}'), { payload: { id: "17tvd0tb7ba" } });
+eq("form body", readBody("task_id=17tvd0tb7ba&x=1"), { task_id: "17tvd0tb7ba", x: "1" });
+eq("form field holding JSON", taskIdOf(readBody(`payload=${encodeURIComponent('{"id":"17tvd0tb7ba"}')}`)), "17tvd0tb7ba");
+eq("empty body", readBody(""), null);
+eq("payload sent as a JSON string", taskIdOf({ payload: '{"id":"17tvd0tb7ba"}' }), "17tvd0tb7ba");
+eq("task nested in payload", taskIdOf({ payload: { task: { id: "17tvd0tb7ba" } } }), "17tvd0tb7ba");
+eq("task under data", taskIdOf({ data: { id: "17tvd0tb7ba" } }), "17tvd0tb7ba");
+eq("a junk id does not hide a good one", taskIdOf({ task_id: "../x", payload: { id: "17tvd0tb7ba" } }), "17tvd0tb7ba");
+eq("shape is names only", shapeOf({ auto_id: "secret-ish", payload: { id: "a", name: "Customer Inc" } }), "auto_id, payload {id, name}");
+eq("shape of nothing", shapeOf(null), "empty or unreadable body");
+eq("hidden task explained", /cannot see it/.test(problemOf(new Error("ClickUp answered 401"))), true);
+eq("other errors kept", problemOf(new Error("timeout")), "timeout");
+eq("outcome checked", outcomeOf({ checked: 1 }), "Checked");
+eq("outcome unchanged", outcomeOf({ checked: 0, failed: 0, unchanged: 1 }), "Already checked, same quote");
+eq("outcome no quote", outcomeOf({ checked: 0, failed: 0, unchanged: 0, no_quote: 1 }), "No Client Quote on the task");
+{
+  const calls = [];
+  const fake = { query: async (q, p) => { calls.push([q.trim().split(/\s+/).slice(0, 3).join(" "), p]); return /returning id/.test(q) ? [{ id: 7 }] : []; } };
+  const id = await logCall(fake, { task_id: "17tvd0tb7ba", outcome: "Received, checking" });
+  await finishCall(fake, id, { task_name: "WO", outcome: "Checked" });
+  eq("log row id", id, 7);
+  eq("log writes then trims", calls.map((c) => c[0]), ["create table if", "insert into webhook_log", "delete from webhook_log", "update webhook_log set"]);
+  eq("finish updates that row", calls[3][1], [7, "WO", "Checked", null]);
+}
 
 console.log(`${pass}/${pass + fail} passed`);
 process.exit(fail ? 1 : 0);
