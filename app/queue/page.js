@@ -5,14 +5,17 @@ import { useEffect, useMemo, useState } from "react";
 import { parseAnswer, pointsOf, quoteSnippet, toneOf as tone, valueClass } from "../../lib/answer";
 
 // Same tones as the check page; the queue only needs the short class names.
-const CLS = { sig: "sig", warn: "warn", tape: "tape", ok: "ok" };
-const toneOf = (h) => { const t = tone(h || ""); return { cls: CLS[t.tone], label: t.label }; };
+const CLS = { sig: "sig", warn: "warn", tape: "tape", ok: "ok", wait: "wait" };
+// The headline is read from the stored answer (a phased quote opens with the phase name), and
+// the quote decides whether "no reason" matters: on a Tech 1 only quote it does not.
+const toneOf = (r) => { const t = tone(parseAnswer(r.answer || r.headline || "").headline, r.quote ?? null); return { cls: CLS[t.tone], label: t.label }; };
 
 const FILTERS = [
   { key: "all", label: "All" },
   { key: "tape", label: "Needs a reason" },
   { key: "ok", label: "Justified" },
   { key: "sig", label: "OSHA" },
+  { key: "wait", label: "No 2nd tech" },
   { key: "failed", label: "Failed" },
 ];
 
@@ -53,7 +56,7 @@ export default function Queue() {
   }
 
   const rows = data?.rows || [];
-  const keyOf = (r) => (r.ok ? toneOf(r.headline).cls : "failed");
+  const keyOf = (r) => (r.ok ? toneOf(r).cls : "failed");
   const counts = useMemo(() => rows.reduce((c, r) => ({ ...c, [keyOf(r)]: (c[keyOf(r)] || 0) + 1 }), {}), [rows]);
   const shown = filter === "all" ? rows : rows.filter((r) => keyOf(r) === filter);
   const sel = rows.find((r) => r.task_id === open);
@@ -107,7 +110,7 @@ export default function Queue() {
               <thead><tr><th>Work order</th><th>Quote</th><th>Entity</th><th>Client</th><th>State</th><th>Verdict</th><th>Checked</th></tr></thead>
               <tbody>
                 {shown.map((r) => {
-                  const t = toneOf(r.headline);
+                  const t = toneOf(r);
                   return (
                     <tr key={r.task_id} className="click" onClick={() => setOpen(r.task_id)}>
                       <td className="mono">{r.task_name}</td>

@@ -22,7 +22,7 @@ function Verdict({ res }) {
     // A lone-worker answer carries no summary line at all. Print it exactly as written.
     return <div className="card"><div className="bd"><div className="prose">{res.answer}</div></div></div>;
   }
-  const t = toneOf(a.headline);
+  const t = toneOf(a.headline, res.quote);
   return (
     <div className={`card verdict-card tone-${t.tone}`}>
       <div className="bd stack">
@@ -207,7 +207,8 @@ export default function Home() {
     setStage("Checking");
     try {
       const r = await fetch("/api/check", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quote, state, vector }) });
-      setRes(await r.json());
+      // The quote as it was checked, so the verdict's tone reads the same text the answer did.
+      setRes({ ...(await r.json()), quote });
     } catch { setRes({ ok: false, problem: "Could not reach the checker." }); }
     setBusy(false); setStage("");
   }

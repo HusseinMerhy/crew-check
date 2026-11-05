@@ -306,3 +306,7 @@ ol.why-list{margin:0;padding:0;list-style:none;counter-reset:w;display:grid;gap:
 ol.why-list li{counter-increment:w;display:grid;grid-template-columns:24px minmax(0,1fr);gap:10px;font-size:15px;line-height:1.5}
 ol.why-list li::before{content:counter(w);width:24px;height:24px;border-radius:50%;background:var(--inset);color:var(--ink-2);display:grid;place-items:center;font:600 12px var(--display);margin-top:1px}
 @media (max-width:760px){ .big2 .val{font-size:32px} }
+
+/* A Tech 1 only quote: nothing to justify, so a quiet grey instead of the tape. */
+.tone-wait .badge{background:var(--wait-soft);color:var(--wait)}
+.verdict-card.tone-wait{--tone:var(--line-3)}
