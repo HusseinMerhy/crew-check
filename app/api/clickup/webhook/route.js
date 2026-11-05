@@ -21,11 +21,24 @@ export const maxDuration = 60;
 // Compare digests so the time taken says nothing about how much of a guess was right.
 const same = (a, b) => timingSafeEqual(createHash("sha256").update(String(a)).digest(), createHash("sha256").update(String(b)).digest());
 
-export async function POST(req) {
+// The secret check shared by POST and GET. Null when the call may go on.
+function refuse(req) {
   const secret = process.env.WEBHOOK_SECRET;
   if (!secret) return Response.json({ ok: false, problem: "The webhook is off: WEBHOOK_SECRET is not set in Vercel." }, { status: 501 });
   const given = new URL(req.url).searchParams.get("secret") || req.headers.get("x-crew-check-secret") || "";
   if (!same(given, secret)) return Response.json({ ok: false, problem: "Wrong or missing secret." }, { status: 401 });
+  return null;
+}
+
+// ClickUp's "Test" button, and a browser opening the address, only need to hear that the address
+// works. With the right secret this says so; nothing is read or checked.
+export async function GET(req) {
+  return refuse(req) || Response.json({ ok: true, ready: true });
+}
+
+export async function POST(req) {
+  const no = refuse(req);
+  if (no) return no;
 
   const token = process.env.CLICKUP_API_TOKEN, sql = getSql();
   if (!token || !sql) return Response.json({ ok: false, problem: "CLICKUP_API_TOKEN or DATABASE_URL is not set in Vercel." }, { status: 501 });
@@ -33,7 +46,9 @@ export async function POST(req) {
   let body;
   try { body = await req.json(); } catch { body = null; }
   const id = taskIdOf(body);
-  if (!id) return Response.json({ ok: false, problem: "No task id in the call." }, { status: 400 });
+  // A test call carries no task. Answer OK, so the sender sees the address works; there is
+  // simply nothing to check.
+  if (!id) return Response.json({ ok: true, test: true, note: "No task in the call: nothing to check." });
 
   after(async () => {
     try {
