@@ -2,6 +2,7 @@
 // and the read-only ClickUp import's parsing. No API credit: node tests/vol2.test.mjs
 import { jobOf, lookup, lookupJob, historyLine, clientsOf, MIN_QUOTES } from "../lib/history.js";
 import { parseTaskRef, fieldText } from "../lib/clickup.js";
+import { taskIdOf, isWaiting, waitingStatuses } from "../lib/webhook.js";
 import { syncQuotes, fillQuotes, MAX_PER_RUN } from "../lib/sync.js";
 import { parseAnswer, secondTechHours, toneOf } from "../lib/answer.js";
 
@@ -139,6 +140,17 @@ eq("line prefers entity with client", historyLine(P, "BKR", "Door repair or repl
 eq("line falls back to the client", historyLine(P, "SFM", "Door repair or replacement", "EMCOR"), "EMCOR: a second tech on 76% of 25 past door repair or replacement quotes (all quotes: 70%).");
 eq("unknown client falls back to the entity", historyLine(P, "BKR", "Door repair or replacement", "Nobody"), "BKR: a second tech on 80% of 30 past door repair or replacement quotes (all quotes: 70%).");
 eq("client list", clientsOf(P), ["EMCOR"]);
+
+// the ClickUp webhook: where the task id is, and which statuses count as waiting
+eq("automation payload", taskIdOf({ auto_id: "x", payload: { id: "86a2tqk0c", name: "WO" } }), "86a2tqk0c");
+eq("API webhook", taskIdOf({ event: "taskStatusUpdated", task_id: "86akpqfkk" }), "86akpqfkk");
+eq("hand-made test call", taskIdOf({ id: "86a2b8cu8" }), "86a2b8cu8");
+eq("no id", taskIdOf({ hello: 1 }), null);
+eq("junk id refused", taskIdOf({ id: "../../etc" }), null);
+eq("default statuses", waitingStatuses({}), ["quote ready", "!! waiting for approval"]);
+eq("statuses from settings", waitingStatuses({ CLICKUP_SYNC_STATUSES: "quote ready, waiting for quote" }), ["quote ready", "waiting for quote"]);
+eq("waiting, any case", isWaiting({ status: { status: "Quote Ready" } }, waitingStatuses({})), true);
+eq("not waiting", isWaiting({ status: { status: "invoiced" } }, waitingStatuses({})), false);
 
 console.log(`${pass}/${pass + fail} passed`);
 process.exit(fail ? 1 : 0);

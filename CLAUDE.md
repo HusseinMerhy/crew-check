@@ -366,6 +366,16 @@ Access: the passcode lock lets `/api/clickup/sync` through only with
 `Authorization: Bearer <CRON_SECRET>`, which Vercel Cron sends. "Run now" on `/queue`
 uses `?manual=1`, accepted only while `SITE_PASSCODE` is on.
 
+### Vol 2 ClickUp webhook (`/api/clickup/webhook`)
+
+A ClickUp Automation ("When status changes to quote ready / !! waiting for approval", action
+"Call webhook") POSTs the task to `/api/clickup/webhook?secret=<WEBHOOK_SECRET>`. The passcode lock
+lets that path through only with the right secret. The route answers 202 at once and, after the
+answer (`after()` from next/server), reads the task (GET), skips it if it is no longer waiting,
+and runs it through `syncQuotes` with a one-task list, so it shares the daily run's dedupe and
+storage. Nothing is written to ClickUp. The daily run stays as the safety net. Helpers:
+`lib/webhook.js`, tested in `tests/vol2.test.mjs`.
+
 ### Two subsets will fail, by design
 
 These are not defects in the runner and not regressions. They record wanted

@@ -100,6 +100,8 @@ See `.env.example` for the same list with notes and no values.
 | `CRON_SECRET` | Secret | Vol 2: turns on the daily automatic check (`/queue`). Any long random string; Vercel Cron sends it so the passcode lock lets the daily run through. Unset means no daily run. |
 | `CLICKUP_SYNC_STATUSES` | Config | Vol 2: which ClickUp statuses the daily check reads, comma separated. Unset means `quote ready,!! waiting for approval`. |
 
+| `WEBHOOK_SECRET` | Secret | Vol 2: turns on the ClickUp webhook (`/api/clickup/webhook`), which checks a quote the moment it reaches a waiting status. Any long random string; the same string goes at the end of the webhook address in the ClickUp Automation. Unset means the webhook is off. |
+
 After changing any setting: Deployments → **top row** → Redeploy. Never redeploy an older row (it puts old code live).
 
 ## Running the tests
