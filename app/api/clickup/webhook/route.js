@@ -14,7 +14,7 @@ import { POST as runCheck } from "../../check/route";
 import { getTask } from "../../../../lib/clickup";
 import { syncQuotes } from "../../../../lib/sync";
 import { getSql } from "../../../../lib/db";
-import { finishCall, isWaiting, logCall, outcomeOf, problemOf, readBody, shapeOf, taskIdOf, waitingStatuses } from "../../../../lib/webhook";
+import { finishCall, isWaiting, logCall, logRefused, outcomeOf, problemOf, readBody, shapeOf, taskIdOf, waitingStatuses } from "../../../../lib/webhook";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
@@ -41,7 +41,13 @@ const quietly = async (fn) => { try { return await fn(); } catch (e) { console.e
 
 export async function POST(req) {
   const no = refuse(req);
-  if (no) return no;
+  if (no) {
+    // A call with a wrong or missing secret is logged too (without its body), so an automation
+    // whose address lost the secret shows on /queue instead of looking like no call at all.
+    const sql = no.status === 401 ? getSql() : null;
+    if (sql) await quietly(() => logRefused(sql));
+    return no;
+  }
 
   const token = process.env.CLICKUP_API_TOKEN, sql = getSql();
   if (!token || !sql) return Response.json({ ok: false, problem: "CLICKUP_API_TOKEN or DATABASE_URL is not set in Vercel." }, { status: 501 });

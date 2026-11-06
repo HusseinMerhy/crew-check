@@ -39,7 +39,7 @@ function Answer({ text }) {
 }
 
 const when = (t) => new Date(t).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-const hookTone = (o) => (/^Checked|^Already/.test(o) ? "ok" : /^Received/.test(o) ? "wait" : /Failed|failed/.test(o) ? "close" : "tape");
+const hookTone = (o) => (/^Checked|^Already/.test(o) ? "ok" : /^Received/.test(o) ? "wait" : /Failed|failed|^Refused/.test(o) ? "close" : "tape");
 
 // The last calls from the ClickUp webhook: folded to one line, opened to see each call's outcome.
 function HookLog({ calls }) {
