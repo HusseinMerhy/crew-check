@@ -33,10 +33,11 @@ export async function middleware(req) {
   if (cronSecret && req.nextUrl.pathname === "/api/clickup/sync" && await sameSecret(header, `Bearer ${cronSecret}`)) {
     return NextResponse.next();
   }
-  // ClickUp cannot type a passcode either. The webhook carries its own secret in the URL and is
-  // let through only when that secret is right.
-  const hookSecret = process.env.WEBHOOK_SECRET;
-  if (hookSecret && req.nextUrl.pathname === "/api/clickup/webhook" && await sameSecret(req.nextUrl.searchParams.get("secret") || "", hookSecret)) {
+  // ClickUp cannot type a passcode either. The webhook carries its own secret in the URL, and the
+  // route checks it (the same digest comparison as here) and refuses a wrong one. It is passed on
+  // unchecked so the route can log a refused call: an automation whose address lost its secret
+  // then shows on /queue instead of looking like no call at all.
+  if (process.env.WEBHOOK_SECRET && req.nextUrl.pathname === "/api/clickup/webhook") {
     return NextResponse.next();
   }
   if (header.startsWith("Basic ")) {

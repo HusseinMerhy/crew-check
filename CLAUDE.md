@@ -370,7 +370,8 @@ uses `?manual=1`, accepted only while `SITE_PASSCODE` is on.
 
 A ClickUp Automation ("When status changes to quote ready / !! waiting for approval", action
 "Call webhook") POSTs the task to `/api/clickup/webhook?secret=<WEBHOOK_SECRET>`. The passcode lock
-lets that path through only with the right secret. The route answers 202 at once and, after the
+passes that path on to the route, which checks the secret itself (same digest comparison) and
+refuses a wrong one with 401. The route answers 202 at once and, after the
 answer (`after()` from next/server), reads the task (GET), skips it if it is no longer waiting,
 and runs it through `syncQuotes` with a one-task list, so it shares the daily run's dedupe and
 storage. Nothing is written to ClickUp. The daily run stays as the safety net. Helpers:
@@ -380,6 +381,10 @@ Every call with the right secret is written to `webhook_log` (the newest 200 are
 last 10 show in a folded "Webhook" card on `/queue`: when it came, the task, and what became of it
 ("Checked", "Already checked, same quote", "Not waiting, skipped", "No Client Quote on the task",
 "No task in the call" with the body's field names, never its values, or "Failed" with the reason).
+A POST with a wrong or missing secret is logged as "Refused" (no body kept, at most one a minute,
+since anyone can send one), so an automation whose address lost its secret is visible; an address
+on another host never reaches the log at all. This is why the passcode lock does not check the
+webhook secret: it would answer 401 before the route could log anything.
 Before the log, a failure inside `after()` reached only the Vercel console. The body is read as
 JSON, or as a form body whose fields may hold JSON, and the task id is looked for under `task_id`,
 `payload` (object or JSON string), `payload.task`, `task`, `data` and `id`.

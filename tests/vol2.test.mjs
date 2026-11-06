@@ -2,7 +2,7 @@
 // and the read-only ClickUp import's parsing. No API credit: node tests/vol2.test.mjs
 import { jobOf, lookup, lookupJob, historyLine, clientsOf, MIN_QUOTES } from "../lib/history.js";
 import { parseTaskRef, fieldText } from "../lib/clickup.js";
-import { taskIdOf, isWaiting, waitingStatuses, readBody, shapeOf, problemOf, outcomeOf, logCall, finishCall } from "../lib/webhook.js";
+import { taskIdOf, isWaiting, waitingStatuses, readBody, shapeOf, problemOf, outcomeOf, logCall, finishCall, logRefused, REFUSED } from "../lib/webhook.js";
 import { syncQuotes, fillQuotes, MAX_PER_RUN } from "../lib/sync.js";
 import { parseAnswer, secondTechHours, toneOf } from "../lib/answer.js";
 
@@ -181,6 +181,16 @@ eq("outcome no quote", outcomeOf({ checked: 0, failed: 0, unchanged: 0, no_quote
   eq("log row id", id, 7);
   eq("log writes then trims", calls.map((c) => c[0]), ["create table if", "insert into webhook_log", "delete from webhook_log", "update webhook_log set"]);
   eq("finish updates that row", calls[3][1], [7, "WO", "Checked", null]);
+}
+
+{
+  // a refused call is logged at most once a minute, with nothing from the call kept
+  const writes = [];
+  const fake = (recent) => ({ query: async (q, p) => { if (/^insert/.test(q.trim())) writes.push(p); return /select 1 from webhook_log/.test(q) ? recent : /returning id/.test(q) ? [{ id: 9 }] : []; } });
+  eq("first refusal logged", await logRefused(fake([])), 9);
+  eq("refusal row keeps no task", writes[0].slice(0, 2), [null, REFUSED]);
+  eq("second refusal within a minute skipped", await logRefused(fake([{ "?column?": 1 }])), null);
+  eq("only one write", writes.length, 1);
 }
 
 console.log(`${pass}/${pass + fail} passed`);
