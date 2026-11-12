@@ -314,3 +314,8 @@ ol.why-list li::before{content:counter(w);width:24px;height:24px;border-radius:5
 /* Three history numbers in a row when the client is known. */
 .big2.n3{grid-template-columns:repeat(3,minmax(0,1fr))}
 @media (max-width:760px){ .big2.n3{grid-template-columns:minmax(0,1fr)} }
+
+/* ClickUp field preview in the queue drawer: dashed, because it is not written anywhere yet */
+.cu-field{border:1px dashed var(--line);border-radius:10px;padding:10px 14px;background:var(--inset)}
+.cu-field .lbl{font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)}
+.cu-field .v{font-size:15px;font-weight:600;color:var(--ink);margin:4px 0 2px}
