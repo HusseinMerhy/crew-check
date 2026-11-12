@@ -400,7 +400,7 @@ The "Crew check" field agreed with the dispatch side is one strict line: a fixed
 fixed action (`🔴 NO REASON: remove Tech 2 or add a two-person step`, `🟢 OSHA: Tech 2 required by
 OSHA`, `🟢 OK SAFETY: Tech 2 OK for safety`, `🟢 OK TWO-PERSON: Tech 2 OK, a step needs two people`,
 plus a proposed `⚪ ONE TECH: no Tech 2 on this quote`). Only `🟡 ASK FIRST` carries words from the
-answer: the one fact to confirm. At most 70 characters, no dollar amounts, no client names. The
+answer: the one fact to confirm. At most 70 characters, no dollar amounts, no client names.
 Hector asked for the text to be strict and straightforward (Nov 12), so the same verdict always
 reads the same; the reasons stay in the tool.
 `crewCheckLine(answer, quote)` builds it from a stored answer, and `/queue` shows it in each work
