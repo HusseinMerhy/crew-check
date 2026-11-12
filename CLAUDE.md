@@ -394,6 +394,22 @@ can see. A task in someone's private or personal list fails with "ClickUp would 
 to the tool". The Nov 5 test task (Personal List, hidden folder) is the likely case: the manual run
 at 15:20 UTC also passed it over. Test in a list the token can see.
 
+### Vol 2 ClickUp field preview (`lib/fieldline.js`)
+
+The "Crew check" field agreed with the dispatch side is one line: a fixed keyword, then what to
+do (`🔴 NO REASON`, `🟡 ASK FIRST`, `🟢 OSHA`, `🟢 OK TWO-PERSON`, `🟢 OK SAFETY`, plus a proposed
+`⚪ ONE TECH` for quotes with no Tech 2), about 70 characters, no dollar amounts, no client names.
+`crewCheckLine(answer, quote)` builds it from a stored answer, and `/queue` shows it in each work
+order's drawer as a dashed "ClickUp field preview" box. **It is not written to ClickUp.** The
+owner's rule keeps ClickUp read-only; writing it needs his written OK, then a field ID, a token with
+write access and an on/off switch.
+
+A phased quote gets one verdict per phase, read from each `OSHA: ... | Safety: ... | Two-person
+step: ...` line rather than from headlines, because the skill sometimes writes a later phase's
+verdict inside the explanation with no headline. The phase that most needs a person wins. On the
+Nov 12 queue (192 answers) this made 7 phased quotes red whose headline pill on `/queue` still says
+"Justified": the pill reads only the first headline. That pill is a known gap, not yet changed.
+
 ### Two subsets will fail, by design
 
 These are not defects in the runner and not regressions. They record wanted
