@@ -200,24 +200,26 @@ eq("outcome no quote", outcomeOf({ checked: 0, failed: 0, unchanged: 0, no_quote
   const T1 = "Labor:\n2 hours labor Tech 1 $178.00";
   const sum = (o, s, t) => `OSHA: ${o} | Safety: ${s} | Two-person step: ${t}`;
   const red = `This quote doesn't show a reason for a second tech.\nNo step needs two people.\n${sum("No", "No", "No")}\nState: FL follows federal OSHA. Nothing changes.`;
-  eq("no reason", crewCheckLine(red, T2), "🔴 NO REASON: add a two-person step or remove Tech 2");
-  eq("no Tech 2 billed", crewCheckLine(red, T1), "⚪ ONE TECH: no Tech 2 billed");
+  eq("no reason", crewCheckLine(red, T2), "🔴 NO REASON: remove Tech 2 or add a two-person step");
+  eq("no Tech 2 billed", crewCheckLine(red, T1), "⚪ ONE TECH: no Tech 2 on this quote");
   eq("ask first, from the OSHA Need", crewCheckLine(`OSHA may require a second tech here, if there are combustibles within 35 ft of the brazing.\nText.\n${sum("Need whether combustibles are within 35 ft of the brazing", "No", "No")}`, T2),
     "🟡 ASK FIRST: whether combustibles are within 35 ft of the brazing");
   eq("ask first, from the if clause", crewCheckLine(`OSHA may require a second tech here, if the roof edge is unguarded.\nText.\n${sum("Need", "No", "No")}`, T2), "🟡 ASK FIRST: whether the roof edge is unguarded");
-  eq("ok safety", crewCheckLine(`A second tech makes sense here for safety.\nText.\n${sum("No", "Yes, 80 lb concrete mix bags", "No")}`, T2), "🟢 OK SAFETY: 80 lb concrete mix bags");
-  eq("two-person step named, decimal kept", crewCheckLine(`The second tech is justified: this job needs two pairs of hands.\nThe one step that needs two people is Day 4's install of the 19.69 ft pipe, where one tech holds the pipe while the other fastens it.\n${sum("No", "Need the pipe weight", "Yes")}`, T2),
-    "🟢 OK TWO-PERSON: one tech holds the pipe while the other fastens it");
+  eq("ok safety", crewCheckLine(`A second tech makes sense here for safety.\nText.\n${sum("No", "Yes, 80 lb concrete mix bags", "No")}`, T2), "🟢 OK SAFETY: Tech 2 OK for safety");
+  eq("two-person: fixed wording", crewCheckLine(`The second tech is justified: this job needs two pairs of hands.\nThe one step that needs two people is Day 4's install of the 19.69 ft pipe, where one tech holds the pipe while the other fastens it.\n${sum("No", "Need the pipe weight", "Yes")}`, T2),
+    "🟢 OK TWO-PERSON: Tech 2 OK, a step needs two people");
   const phased = `Incurred: The second tech is justified: this job needs two pairs of hands.\nThe second tech holds the panel while the first fastens it.\n${sum("No", "No", "Yes")}\n\nAdditional Repair: This quote doesn't show a reason for a second tech.\nNothing needs two.\n${sum("No", "No", "No")}\n\nState: IL follows federal OSHA.`;
-  eq("phases: the one that needs a person wins", crewCheckLine(phased, T2), "🔴 NO REASON (Additional): add a two-person step or remove Tech 2");
+  eq("phases: the one that needs a person wins", crewCheckLine(phased, T2), "🔴 NO REASON (Additional): remove Tech 2 or add a two-person step");
   // a later phase's verdict written inside the explanation, with no headline of its own
   const hidden = `The second tech is justified: this job needs two pairs of hands.\nIncurred: One tech holds the door while the other fastens the hinges.\n${sum("No", "Need the door weight", "Yes")}\n\nAdditional Repair: The steps don't name a hold-and-fasten action, so the quote doesn't yet show a two-person step.\n${sum("No", "No", "No")}\nState: IL follows federal OSHA.`;
-  eq("a red phase never hides behind a green one", crewCheckLine(hidden, T2), "🔴 NO REASON (Additional): add a two-person step or remove Tech 2");
+  eq("a red phase never hides behind a green one", crewCheckLine(hidden, T2), "🔴 NO REASON (Additional): remove Tech 2 or add a two-person step");
   const oneSite = `Incurred: One person on site is the right call here.\n${sum("No", "No", "No")}\n\nAdditional Repair: The second tech is justified: this job needs two pairs of hands.\nOne tech holds the panel while the other fastens it.\n${sum("No", "No", "Yes")}`;
-  eq("a one-person phase is not red", crewCheckLine(oneSite, T2), "🟢 OK TWO-PERSON (Additional): one tech holds the panel while the…");
+  eq("a one-person phase is not red", crewCheckLine(oneSite, T2), "🟢 OK TWO-PERSON (Additional): Tech 2 OK, a step needs two people");
   const long = crewCheckLine(`A second tech makes sense here for safety.\nText.\n${sum("No", "Yes, overhead ceiling work while the dining room stays occupied and the ladder stands in the aisle near the $400 display", "No")}`, T2);
   eq("one line, short", long.length <= FIELD_MAX && !long.includes("\n"), true);
-  eq("no dollar amounts", /\$|400/.test(crewCheckLine(`A second tech makes sense here for safety.\nText.\n${sum("No", "Yes, the $400 display weighs 80 lb", "No")}`, T2)), false);
+  eq("no dollar amounts", /\$|400/.test(crewCheckLine(`OSHA may require a second tech here.\nText.\n${sum("Need the $400 lift rental height", "No", "No")}`, T2)), false);
+  eq("ask first drops a leading 'the'", crewCheckLine(`OSHA may require a second tech here.\nText.\n${sum("Need the fall protection method", "No", "No")}`, T2), "🟡 ASK FIRST: fall protection method");
+  eq("same verdict, same words", crewCheckLine(`A second tech makes sense here for safety.\nText.\n${sum("No", "Yes, ladder in a busy aisle", "No")}`, T2), "🟢 OK SAFETY: Tech 2 OK for safety");
   eq("keyword first", KEYWORDS.some((k) => long.startsWith(k)), true);
   eq("not an answer", crewCheckLine("", T2), null);
 }

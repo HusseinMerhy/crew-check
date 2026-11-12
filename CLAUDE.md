@@ -396,9 +396,13 @@ at 15:20 UTC also passed it over. Test in a list the token can see.
 
 ### Vol 2 ClickUp field preview (`lib/fieldline.js`)
 
-The "Crew check" field agreed with the dispatch side is one line: a fixed keyword, then what to
-do (`🔴 NO REASON`, `🟡 ASK FIRST`, `🟢 OSHA`, `🟢 OK TWO-PERSON`, `🟢 OK SAFETY`, plus a proposed
-`⚪ ONE TECH` for quotes with no Tech 2), about 70 characters, no dollar amounts, no client names.
+The "Crew check" field agreed with the dispatch side is one strict line: a fixed keyword, then a
+fixed action (`🔴 NO REASON: remove Tech 2 or add a two-person step`, `🟢 OSHA: Tech 2 required by
+OSHA`, `🟢 OK SAFETY: Tech 2 OK for safety`, `🟢 OK TWO-PERSON: Tech 2 OK, a step needs two people`,
+plus a proposed `⚪ ONE TECH: no Tech 2 on this quote`). Only `🟡 ASK FIRST` carries words from the
+answer: the one fact to confirm. At most 70 characters, no dollar amounts, no client names. The
+Hector asked for the text to be strict and straightforward (Nov 12), so the same verdict always
+reads the same; the reasons stay in the tool.
 `crewCheckLine(answer, quote)` builds it from a stored answer, and `/queue` shows it in each work
 order's drawer as a dashed "ClickUp field preview" box. **It is not written to ClickUp.** The
 owner's rule keeps ClickUp read-only; writing it needs his written OK, then a field ID, a token with
