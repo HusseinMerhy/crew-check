@@ -2,7 +2,7 @@ import "./globals.css";
 import Shell from "./shell";
 
 export const metadata = {
-  title: "Crew Check",
+  title: "Quote Auditor",
   description: "Vista quoting: does this quote need a second tech, and what does this entity usually get accepted?",
 };
 

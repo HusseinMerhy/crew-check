@@ -51,7 +51,7 @@ export async function middleware(req) {
   }
   return new NextResponse("Passcode required.", {
     status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="Crew Check", charset="UTF-8"' },
+    headers: { "WWW-Authenticate": 'Basic realm="Quote Auditor", charset="UTF-8"' },
   });
 }
 

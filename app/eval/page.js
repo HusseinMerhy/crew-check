@@ -22,7 +22,10 @@ import { footnotes, holdoutTable, kpiTable, money, summarizeResult } from "../..
 import PRICES from "../../evals/prices.json";
 import { embedQuote } from "../../lib/embed";
 
-const REPO_RAW = "https://raw.githubusercontent.com/HusseinMerhy/crew-check";
+// The repository the build came from, as Vercel names it, so the page keeps working after the
+// repository is moved to the company or renamed. The fallback is where it lived before the move.
+const REPO = `${process.env.NEXT_PUBLIC_VERCEL_GIT_REPO_OWNER || "HusseinMerhy"}/${process.env.NEXT_PUBLIC_VERCEL_GIT_REPO_SLUG || "crew-check"}`;
+const REPO_RAW = `https://raw.githubusercontent.com/${REPO}`;
 const REF = process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA || "main";
 
 async function raw(file) {
@@ -181,7 +184,7 @@ export default function EvalPage() {
     const blob = new Blob([JSON.stringify(runs.filter((r) => r.set === "cases").map((r) => r.result), null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `crew-check-eval-main-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `quote-auditor-eval-main-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
   };
 
