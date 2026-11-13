@@ -11,7 +11,7 @@ export async function GET() {
   let history = null;
   try { history = process.env.ENTITY_HISTORY ? JSON.parse(process.env.ENTITY_HISTORY) : null; } catch { history = null; }
   try {
-    const rows = await sql.query(`select task_id, task_name, task_url, fm, entity, job, answer, quote, ok, checked_at from auto_checks`);
+    const rows = await sql.query(`select task_id, task_name, task_url, fm, entity, job, answer, quote, ok, checked_at, nte_state, nte_pct from auto_checks`);
     const clients = clientPatterns(rows, history);
     const since = rows.reduce((m, r) => (!m || r.checked_at < m ? r.checked_at : m), null);
     return Response.json({ ok: true, clients, totals: clientTotals(clients), since, history_built: history?.built || null });

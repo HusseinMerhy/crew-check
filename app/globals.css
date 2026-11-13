@@ -324,3 +324,27 @@ ol.why-list li::before{content:counter(w);width:24px;height:24px;border-radius:5
 /* Clients page: a thin bar under the hours, so the biggest risks stand out without a chart */
 .hbar{height:4px;border-radius:2px;background:var(--line-2);margin-bottom:4px;min-width:60px}
 .hbar i{display:block;height:100%;border-radius:2px;background:var(--tape)}
+
+/* The reason finder under a NO REASON quote, and the facts shown in the tool only. */
+.finder{padding:14px 16px;display:flex;flex-direction:column;gap:10px;background:var(--inset)}
+.finder .lbl{font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)}
+.facts-list{display:flex;flex-direction:column;gap:8px}
+
+/* The printable client report (/clients/print). Print or Save as PDF from the browser. */
+.report{max-width:860px;display:flex;flex-direction:column;gap:22px}
+.report h1{font:700 30px/1.1 var(--display);margin:4px 0}
+.report h2{font:600 17px/1.3 var(--display);margin:0 0 8px}
+.report section p,.report section li{font-size:14.5px;line-height:1.55}
+.report-tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.report-tiles>div{border:1px solid var(--line);border-radius:10px;padding:12px}
+.report-tiles .lbl{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)}
+.report-tiles .val{font:700 24px/1.1 var(--display);font-variant-numeric:tabular-nums;margin-top:4px}
+.report-foot{border-top:1px solid var(--line);padding-top:12px;font-size:12.5px;color:var(--ink-3)}
+@media (max-width:760px){ .report-tiles{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@media print{
+  .rail,.topbar,.no-print,.menu-btn{display:none!important}
+  .app,.main{display:block!important;margin:0!important;padding:0!important;background:#fff!important}
+  body{background:#fff!important;color:#000!important}
+  .report{max-width:none}
+  .report section,.report-tiles>div,tr{break-inside:avoid}
+}

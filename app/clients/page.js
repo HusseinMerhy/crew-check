@@ -55,7 +55,7 @@ export default function Clients() {
           {data?.ok && list.length === 0 && <div className="empty">No checks yet. The first daily run fills this page.</div>}
           {list.length > 0 && (
             <table>
-              <thead><tr><th>Client</th><th>Checked</th><th>Tech 2, no reason</th><th>Hours, no reason</th><th>Past quotes</th><th>Top job</th></tr></thead>
+              <thead><tr><th>Client</th><th>Checked</th><th>Tech 2, no reason</th><th>Hours, no reason</th><th>Over NTE</th><th>OT, no reason</th><th>Past quotes</th><th>Top job</th></tr></thead>
               <tbody>
                 {list.map((c) => (
                   <tr key={c.client} className="click" onClick={() => setOpen(c.client)}>
@@ -66,6 +66,8 @@ export default function Clients() {
                       <div className="hbar"><i style={{ width: `${Math.round((100 * c.hours_no_reason) / max)}%` }} /></div>
                       {hrs(c.hours_no_reason)}
                     </td>
+                    <td className="num">{c.over_nte || <span className="muted">0</span>}</td>
+                    <td className="num">{c.ot ? <>{c.ot_no_reason} of {c.ot}</> : <span className="muted">-</span>}</td>
                     <td className="small">{c.history ? <>Tech 2 on {c.history.t2}% of {c.history.n.toLocaleString("en-US")}{c.history.reason != null && <>, reason on {c.history.reason}%</>}</> : <span className="muted">Not enough past quotes</span>}</td>
                     <td className="small">{c.jobs[0] ? `${c.jobs[0].job} (${c.jobs[0].red})` : <span className="muted">-</span>}</td>
                   </tr>
@@ -93,6 +95,11 @@ export default function Clients() {
                 <div className="fact"><div className="lbl">Hours, no reason</div><div className="v">{hrs(sel.hours_no_reason)}</div></div>
                 <div className="fact"><div className="lbl">Ask first</div><div className="v">{sel.ask}</div></div>
               </div>
+              <div className="facts">
+                <div className="fact"><div className="lbl">Over NTE</div><div className="v">{sel.over_nte}</div></div>
+                <div className="fact"><div className="lbl">Overtime, no reason</div><div className="v">{sel.ot_no_reason} of {sel.ot}</div></div>
+              </div>
+              <a className="btn" href={`/clients/print?client=${encodeURIComponent(sel.client)}`} target="_blank" rel="noreferrer">Print report</a>
               {sel.advice.length > 0 && <><h3>What to change in quoting</h3><ol className="why-list">{sel.advice.map((a, i) => <li key={i}>{a}</li>)}</ol></>}
               {sel.jobs.length > 0 && (
                 <>
@@ -117,6 +124,24 @@ export default function Clients() {
                       ))}
                     </tbody>
                   </table>
+                </>
+              )}
+              {sel.others?.length > 0 && (
+                <>
+                  <h3>Over NTE or overtime without a reason</h3>
+                  <table>
+                    <thead><tr><th>Work order</th><th>NTE</th><th>Overtime</th></tr></thead>
+                    <tbody>
+                      {sel.others.map((r) => (
+                        <tr key={r.task_id}>
+                          <td className="mono">{r.task_url ? <a href={r.task_url} target="_blank" rel="noreferrer">{r.task_name}</a> : r.task_name}</td>
+                          <td className="small">{r.nte_pct ? `${r.nte_pct}% of NTE` : "-"}</td>
+                          <td className="small">{r.ot ? "No reason written" : "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="small muted">Shown here only, never written to ClickUp. The overtime rule is not agreed yet: these are for review.</div>
                 </>
               )}
               <div className="small muted">"No reason" means the quote bills a Tech 2 but does not say why two people are needed. It is a risk to fix in the quote, not proof the work needed one person.</div>

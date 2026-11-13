@@ -9,7 +9,8 @@
 // "Run now" on /queue calls it with ?manual=1, which is allowed only while the site passcode is
 // on, so the person pressing it has already passed the lock.
 import { POST as runCheck } from "../../check/route";
-import { listTasks } from "../../../../lib/clickup";
+import { listTasks, getTask } from "../../../../lib/clickup";
+import { tracker, followUp } from "../../../../lib/track";
 import { ensureTables, syncQuotes } from "../../../../lib/sync";
 import { fieldWriter } from "../../../../lib/fieldwrite";
 import { getSql } from "../../../../lib/db";
@@ -39,7 +40,7 @@ export async function GET(req) {
   try {
     out = await syncQuotes({
       list: (page) => listTasks({ token, team, statuses: statuses.length ? statuses : DEFAULT_STATUSES, page }),
-      sql, history, afterCheck: fieldWriter({ token }),
+      sql, history, afterCheck: fieldWriter({ token }), track: tracker(sql),
       check: async (t) => {
         const res = await runCheck(new Request("http://internal/api/check", {
           method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quote: t.quote, state: t.state }),
@@ -50,5 +51,9 @@ export async function GET(req) {
   } catch (e) {
     return Response.json({ ok: false, problem: `Could not read ClickUp: ${e.message}` }, { status: 502 });
   }
+  // Quotes that have left the waiting statuses: read a few again (GET only, no new check), so the
+  // Quote Check tick and a quote edited after approval are still seen (lib/track.js).
+  try { out.followed = await followUp({ sql, getTask: (id) => getTask({ token, id }) }); }
+  catch (e) { out.followed = { read: 0, problem: String(e?.message || e).slice(0, 200) }; }
   return Response.json({ ok: true, ...out });
 }

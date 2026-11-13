@@ -44,7 +44,7 @@ eq("advice: what to write, one-person work, past reasons", emcor.advice, [
 const quiet = list.find((c) => c.client === "Quiet");
 eq("flags a Tech 2 where this client's past quotes almost never had one", quiet.advice[1], "Tech 2 is unusual for this client (0% of 58 past quotes) but is on 3 of 4 quotes checked now: review before sending.");
 eq("advice never says to add hours", list.flatMap((c) => c.advice).some((a) => /add (a )?tech|more hours|add hours/i.test(a)), false);
-eq("totals", clientTotals(list), { checked: 9, with_t2: 7, red: 4, hours: 18, red_share: 57, clients: 2 });
+eq("totals", clientTotals(list), { checked: 9, with_t2: 7, red: 4, hours: 18, over_nte: 0, ot: 0, ot_no_reason: 0, red_share: 57, clients: 2 });
 eq("no client name becomes its own row", clientPatterns([row("n", "", RED, T2(2))], null)[0].client, "(no client)");
 eq("no history: no history row, no history advice", clientPatterns([row("n", "Nobody", RED, T2(2))], H)[0].history, null);
 

@@ -5,6 +5,9 @@ import { useEffect, useState } from "react";
 import { embedQuote } from "../lib/embed";
 import { ENTITIES, clientsOf, lookup, MIN_QUOTES } from "../lib/history";
 import { parseAnswer, pointsOf, toneOf, valueClass } from "../lib/answer";
+import { crewCheckLine } from "../lib/fieldline";
+import { overtimeOf, overtimeText } from "../lib/quotefacts";
+import ReasonFinder from "./reason-finder";
 
 const STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","PR"];
 
@@ -309,6 +312,8 @@ export default function Home() {
           {res?.ok && (
             <>
               <Verdict res={res} />
+              {/^NO REASON/.test(crewCheckLine(res.answer, res.quote)) && <ReasonFinder quote={res.quote} />}
+              {overtimeOf(res.quote).billed && <div className={`note ${overtimeOf(res.quote).reason ? "" : "warn"}`}><b>Overtime:</b> {overtimeText(overtimeOf(res.quote))}</div>}
               {(entity || client) && <History entity={entity} client={client} quote={quote} history={history} />}
               <Why res={res} />
               <RuleCards cards={res.cards} />
