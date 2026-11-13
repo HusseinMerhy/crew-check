@@ -2,7 +2,7 @@
 // and the read-only ClickUp import's parsing. No API credit: node tests/vol2.test.mjs
 import { jobOf, lookup, lookupJob, historyLine, clientsOf, MIN_QUOTES } from "../lib/history.js";
 import { parseTaskRef, fieldText } from "../lib/clickup.js";
-import { taskIdOf, isWaiting, waitingStatuses, statusNote, readBody, shapeOf, problemOf, outcomeOf, logCall, finishCall, logRefused, REFUSED } from "../lib/webhook.js";
+import { taskIdOf, isWaiting, waitingStatuses, statusNote, readBody, shapeOf, problemOf, outcomeOf, logCall, finishCall, logRefused, REFUSED, fieldDetail } from "../lib/webhook.js";
 import { syncQuotes, fillQuotes, MAX_PER_RUN, hashOf } from "../lib/sync.js";
 import { writeSettings, writeDecision, writeField } from "../lib/fieldwrite.js";
 import { parseAnswer, secondTechHours, toneOf } from "../lib/answer.js";
@@ -287,6 +287,23 @@ eq("outcome no quote", outcomeOf({ checked: 0, failed: 0, unchanged: 0, no_quote
   const failingWriter = async () => { throw new Error("ClickUp answered 401 to the field write"); };
   out = await syncQuotes({ list: async () => ({ tasks: [quoteTask("s3", hinge + " v3")], last: true }), sql: db3, check: okCheck, history: null, afterCheck: failingWriter });
   eq("a refused write is noted and retried later", [out.checked, rows.get("s3").fw, rows.get("s3").note], [1, null, "ClickUp answered 401 to the field write"]);
+}
+
+// field writes show in the webhook log and the run summary, including why one was refused
+eq("log: field written", fieldDetail({ field_written: 1 }), "OSHA Check field written in ClickUp.");
+eq("log: field refused, with the reason", fieldDetail({ field_written: 0, field_not_written: 1, field_note: "ClickUp answered 401 to the field write" }), "OSHA Check not written: ClickUp answered 401 to the field write");
+eq("log: writing off says nothing", fieldDetail({ field_written: 0, field_not_written: 0 }), null);
+{
+  const rows = new Map();
+  const db4 = { query: async (q, p) => {
+    if (q.startsWith("select")) return [];
+    if (q.startsWith("update auto_checks set field_written_at")) return [];
+    if (q.startsWith("insert")) { rows.set(p[0], 1); return []; }
+    return [];
+  } };
+  const refused = async () => { throw new Error("ClickUp answered 401 to the field write"); };
+  const r = await syncQuotes({ list: async () => ({ tasks: [quoteTask("r1", hinge + " r1")], last: true }), sql: db4, check: okCheck, history: null, afterCheck: refused });
+  eq("run summary counts refused writes and keeps the reason", [r.field_written, r.field_not_written, r.field_note], [0, 1, "ClickUp answered 401 to the field write"]);
 }
 
 console.log(`${pass}/${pass + fail} passed`);
