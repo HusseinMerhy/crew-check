@@ -436,6 +436,39 @@ verdict inside the explanation with no headline. The phase that most needs a per
 Nov 12 queue (192 answers) this made 7 phased quotes red whose headline pill on `/queue` still says
 "Justified": the pill reads only the first headline. That pill is a known gap, not yet changed.
 
+### Nov 13: checks shown in the tool only, Fixes, the reason finder, the OBI connection
+
+Inspired by OBI ("The One", the company's own system meant to replace ClickUp; its roadmap has a
+"TL/ATL quote audit" step). None of these writes to ClickUp: the owner's rule allows one field,
+OSHA Check, and nothing here changes that.
+
+- `lib/quotefacts.js`: the quote's total (last "Grand Total", else "Total Incurred" plus "Total
+  Additional", else a plain "Total"; read on 98.9% of 23,869 past quotes) against "16. Client NTE",
+  kept as a state and a percent, never an amount. Overtime on a labor line and whether a reason is
+  written: the same words as the baseline study (21.2% overtime, 6.5% with a reason on the export).
+  The overtime rule is not agreed with the manager, so it is labelled "for review". The "Quote
+  Check" checkbox (`CLICKUP_QC_FIELD` to rename).
+- `lib/track.js`, passed to `syncQuotes` as `track` so the loop's own queries stay as they were:
+  every checked version goes to `check_versions`; every task read gets its current status, tick,
+  NTE result, quote hash and Tech 2 hours on `auto_checks`, in one batched update after the checks.
+  The daily run also reads up to 25 older quotes again (GET only, no model call) because they leave
+  the waiting statuses. Tested against a real Postgres 16 as well as the fakes.
+- `lib/impact.js` and `/fixes`: a quote flagged NO REASON is "fixed" when a later version has an
+  accepted reason, or fewer Tech 2 hours (also when only seen in ClickUp, marked as not checked
+  again). It counts what changed after the flag, not why. Counts start on the day versions were
+  first kept.
+- "Quote Check" is not the TL's pre-send check: in OBI's ClickUp sample all 113 ticks were at done
+  or invoiced, none at quote ready. The Fixes page says so. Confirm with the owner what it means.
+- `lib/reason.js`, `/api/reason`: paste the tech's call or texts; the model points at the words,
+  and code refuses any words not found in the paste (spacing and case aside). One small call on the
+  deployment's `CLAUDE_MODEL`, nothing stored.
+- `/clients/print`: one client's report, printed or saved as PDF from the browser. Marked as a
+  draft for internal review: what a client sees is the manager's decision.
+- `/api/obi` (`lib/obi.js`, `docs/obi-handoff.md`): off until `OBI_API_KEY` is set. GET returns a
+  work order's stored verdict, POST checks a quote now (spends credit). The passcode lock lets the
+  path through only with that Bearer key, and the route checks it again.
+- Tests: `tests/features.test.mjs` (in CI). Each guard was broken on purpose and a test failed.
+
 ### Two subsets will fail, by design
 
 These are not defects in the runner and not regressions. They record wanted

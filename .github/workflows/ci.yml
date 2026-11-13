@@ -33,6 +33,7 @@ jobs:
       - run: node tests/agentic.test.mjs
       - run: node tests/vol2.test.mjs
       - run: node tests/clients.test.mjs
+      - run: node tests/features.test.mjs
       - run: npm run build
         env:
           # Dummy values. Nothing is read at build time today (every route is force-dynamic), so

@@ -64,7 +64,13 @@ If either is missing, the app still answers from keyword search alone and the li
 | `app/api/health/route.js` | One tiny Claude call to prove the key and model work. |
 | `app/shell.js`, `app/globals.css` | **The look.** Left menu, top bar and cards in the Backlog Chaser identity (same tokens, fonts and components as `rawanseamless/backlog-rule`, `web/styles.css`), light and dark. |
 | `lib/answer.js` | Reads the bot's answer into its parts (headline, the OSHA, Safety and Two-person tiles, State, Permit, Worth checking). Shared by the check page and the daily queue. |
-| `app/queue/page.js` | **The daily queue.** What the once-a-day ClickUp check found, with filters and a side panel per quote. |
+| `app/queue/page.js` | **The daily queue.** What the once-a-day ClickUp check found, with filters and a side panel per quote: the OSHA Check line, the NTE and overtime notes, the versions checked, and the reason finder. |
+| `lib/quotefacts.js` | **Facts read in code, never by the model:** the quote's total against the client's NTE (kept as a state and a percent, never an amount), overtime and whether its reason is written, and the "Quote Check" tick. Shown in the tool only; nothing here is written to ClickUp. |
+| `lib/track.js` | Keeps every quote version checked (`check_versions`) and, on each run, the task's current status, tick, NTE result and Tech 2 hours. Reads up to 25 older quotes again per daily run (GET only, no new check). |
+| `lib/impact.js`, `app/fixes/page.js` | **Fixes:** quotes flagged NO REASON and what became of them (reason added, Tech 2 removed or cut, still red), and the "Quote Check" tick against the verdict. |
+| `app/clients/print/page.js` | One client's quote review as a printable page. Print, or Save as PDF, from the browser. Marked as a draft for internal review. |
+| `lib/reason.js`, `app/api/reason/route.js`, `app/reason-finder.js` | **The reason finder:** paste the call or texts with the tech; the model points at the words that give a two-person reason, and code checks those words really are in the paste before suggesting a sentence for the quote. |
+| `lib/obi.js`, `app/api/obi/route.js` | **The OBI connection,** off until `OBI_API_KEY` is set: OBI asks for a work order's verdict, or has a quote checked before sending. See `docs/obi-handoff.md`. |
 | `app/eval/page.js` | **The eval, run from a browser** at `/eval`. Runs the eval cases against this site (fixed pipeline and agentic search), sends the meaning vector like a real user, and shows the KPI table and the agentic decision rule. Uses the site's own key: every check spends credit, and it asks first. Holdout results show as totals only. |
 | `lib/embed.js` | Builds the quote's meaning vector in the browser. Shared by the check page and `/eval`, so the eval sends exactly what a user's browser sends. |
 | `middleware.js` | The lock. If `SITE_PASSCODE` is set, every page and every `/api/*` route asks for it. If not set, the site is open. The compare is constant-time over SHA-256 digests, so the response time does not leak how much of a guess was right. |
@@ -99,11 +105,12 @@ See `.env.example` for the same list with notes and no values.
 
 | `CRON_SECRET` | Secret | Vol 2: turns on the daily automatic check (`/queue`). Any long random string; Vercel Cron sends it so the passcode lock lets the daily run through. Unset means no daily run. |
 | `CLICKUP_SYNC_STATUSES` | Config | Vol 2: which ClickUp statuses the daily check reads, comma separated. Unset means `quote ready,!! waiting for approval`. |
-
 | `WEBHOOK_SECRET` | Secret | Vol 2: turns on the ClickUp webhook (`/api/clickup/webhook`), which checks a quote the moment it reaches a waiting status. Any long random string; the same string goes at the end of the webhook address in the ClickUp Automation. Unset means the webhook is off. |
 | `CLICKUP_WRITE` | Plain | Vol 2: `on` lets the tool write its one line into the "OSHA Check" field in ClickUp after each check (`lib/fieldwrite.js`). Anything else, or unset, means nothing is written. Off by default. |
 | `CLICKUP_WRITE_LISTS` | Plain | Vol 2: the ClickUp list ids where that field may be written, comma separated, or `all`. Start with HECTOR: `901327439308`. |
 | `CLICKUP_FIELD_NAME` | Plain | Optional. The field's name, if it is not "OSHA Check". (`CLICKUP_FIELD_ID` instead pins one field id.) |
+| `CLICKUP_QC_FIELD` | Plain | Optional. The checkbox read for the Fixes page's comparison, if it is not "Quote Check". Read only. |
+| `OBI_API_KEY` | Secret | Turns on the connection OBI can call (`/api/obi`, see `docs/obi-handoff.md`). Any long random string, given to OBI's builder, never pasted in chat. Unset means the connection is off. |
 
 After changing any setting: Deployments → **top row** → Redeploy. Never redeploy an older row (it puts old code live).
 

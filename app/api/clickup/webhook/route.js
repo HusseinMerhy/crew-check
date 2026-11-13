@@ -14,6 +14,7 @@ import { POST as runCheck } from "../../check/route";
 import { getTask } from "../../../../lib/clickup";
 import { ensureTables, syncQuotes } from "../../../../lib/sync";
 import { fieldWriter } from "../../../../lib/fieldwrite";
+import { tracker } from "../../../../lib/track";
 import { getSql } from "../../../../lib/db";
 import { fieldDetail, finishCall, logCall, logRefused, outcomeOf, problemOf, readBody, shapeOf, statusNote, taskIdOf, waitingStatuses } from "../../../../lib/webhook";
 export const dynamic = "force-dynamic";
@@ -77,7 +78,7 @@ export async function POST(req) {
       // checked with the same text and stores the answer for the queue.
       const r = await syncQuotes({
         list: async () => ({ tasks: [task], last: true }),
-        sql, history, afterCheck: fieldWriter({ token }),
+        sql, history, afterCheck: fieldWriter({ token }), track: tracker(sql),
         check: async (t) => (await runCheck(new Request("http://internal/api/check", {
           method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quote: t.quote, state: t.state }),
         }))).json(),

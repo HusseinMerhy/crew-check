@@ -4,6 +4,7 @@
 // field is written by the check itself when switched on (lib/fieldwrite.js).
 import { useEffect, useMemo, useState } from "react";
 import { parseAnswer, pointsOf, quoteSnippet, toneOf as tone, valueClass } from "../../lib/answer";
+import ReasonFinder from "../reason-finder";
 
 // Same tones as the check page; the queue only needs the short class names.
 const CLS = { sig: "sig", warn: "warn", tape: "tape", ok: "ok", wait: "wait" };
@@ -18,7 +19,11 @@ const FILTERS = [
   { key: "sig", label: "OSHA" },
   { key: "wait", label: "No 2nd tech" },
   { key: "failed", label: "Failed" },
+  // Shown in the tool only, never written to ClickUp.
+  { key: "nte", label: "Over NTE" },
+  { key: "ot", label: "Overtime, no reason" },
 ];
+const extraOf = (r) => ({ nte: r.nte?.state === "over", ot: !!r.ot && !r.ot.reason });
 
 // The stored answer, drawn like the check page's verdict card.
 function Answer({ text }) {
@@ -106,8 +111,11 @@ export default function Queue() {
 
   const rows = data?.rows || [];
   const keyOf = (r) => (r.ok ? toneOf(r).cls : "failed");
-  const counts = useMemo(() => rows.reduce((c, r) => ({ ...c, [keyOf(r)]: (c[keyOf(r)] || 0) + 1 }), {}), [rows]);
-  const shown = filter === "all" ? rows : rows.filter((r) => keyOf(r) === filter);
+  const counts = useMemo(() => rows.reduce((c, r) => {
+    const x = extraOf(r);
+    return { ...c, [keyOf(r)]: (c[keyOf(r)] || 0) + 1, nte: (c.nte || 0) + (x.nte ? 1 : 0), ot: (c.ot || 0) + (x.ot ? 1 : 0) };
+  }, {}), [rows]);
+  const shown = filter === "all" ? rows : filter === "nte" || filter === "ot" ? rows.filter((r) => extraOf(r)[filter]) : rows.filter((r) => keyOf(r) === filter);
   const sel = rows.find((r) => r.task_id === open);
 
   return (
@@ -134,6 +142,7 @@ export default function Queue() {
       {running && !running.busy && (running.ok
         ? <div className={`lint ${running.field_not_written ? "bad" : "ok"}`}>
             Checked {running.checked} · failed {running.failed}{running.left_for_next_run ? " · more next run" : ""}
+            {running.followed?.read ? ` · read again ${running.followed.read}` : ""}
             {running.field_written ? ` · OSHA Check written ${running.field_written}` : ""}
             {running.field_not_written ? ` · OSHA Check not written ${running.field_not_written}: ${running.field_note}` : ""}
           </div>
@@ -174,7 +183,11 @@ export default function Queue() {
                       <td>{r.entity || <span className="muted">-</span>}</td>
                       <td>{r.fm || <span className="muted">-</span>}</td>
                       <td>{r.state || <span className="muted">-</span>}</td>
-                      <td>{r.ok ? <span className={`pill ${t.cls}`}><i />{t.label}</span> : <span className="pill close"><i />Failed</span>}</td>
+                      <td>
+                        {r.ok ? <span className={`pill ${t.cls}`}><i />{t.label}</span> : <span className="pill close"><i />Failed</span>}
+                        {r.nte?.state === "over" && <span className="pill warn" title={r.nte.text}><i />Over NTE</span>}
+                        {r.ot && !r.ot.reason && <span className="pill wait" title={r.ot.text}><i />OT, no reason</span>}
+                      </td>
                       <td className="muted small num">{when(r.checked_at)}</td>
                     </tr>
                   );
@@ -214,6 +227,24 @@ export default function Queue() {
                       ? `Written to ClickUp ${when(sel.field_written_at)}.`
                       : sel.field_note || (data?.write?.on ? "Not written yet." : "Preview only: writing to ClickUp is off.")}
                   </div>
+                </div>
+              )}
+              {sel.changed_since && <div className="lint warn">The quote in ClickUp changed after this check and has not been checked again yet.</div>}
+              {sel.ok && /^NO REASON/.test(sel.field || "") && <ReasonFinder quote={sel.quote || ""} key={sel.task_id} />}
+              {(sel.nte || sel.ot || sel.quote_check != null) && (
+                <div className="facts-list">
+                  {sel.nte && <div className={`note ${sel.nte.state === "over" ? "warn" : ""}`}><b>NTE:</b> {sel.nte.text}</div>}
+                  {sel.ot && <div className={`note ${sel.ot.reason ? "" : "warn"}`}><b>Overtime:</b> {sel.ot.text}</div>}
+                  {sel.quote_check != null && <div className="note"><b>Quote Check in ClickUp:</b> {sel.quote_check ? "ticked" : "not ticked yet"}.</div>}
+                  <div className="small muted">These are shown here only. The tool writes nothing to ClickUp but the OSHA Check field.</div>
+                </div>
+              )}
+              {sel.versions?.length > 1 && (
+                <div>
+                  <h3>Versions checked</h3>
+                  <ol className="why-list">
+                    {sel.versions.map((v, i) => <li key={i}><span className="mono small">{when(v.checked_at)}</span> {v.line} <span className="muted small">(Tech 2: {Number(v.t2_hours) || 0} h)</span></li>)}
+                  </ol>
                 </div>
               )}
               {sel.ok
