@@ -2,7 +2,7 @@
 // and the read-only ClickUp import's parsing. No API credit: node tests/vol2.test.mjs
 import { jobOf, lookup, lookupJob, historyLine, clientsOf, MIN_QUOTES } from "../lib/history.js";
 import { parseTaskRef, fieldText } from "../lib/clickup.js";
-import { taskIdOf, isWaiting, waitingStatuses, readBody, shapeOf, problemOf, outcomeOf, logCall, finishCall, logRefused, REFUSED } from "../lib/webhook.js";
+import { taskIdOf, isWaiting, waitingStatuses, statusNote, readBody, shapeOf, problemOf, outcomeOf, logCall, finishCall, logRefused, REFUSED } from "../lib/webhook.js";
 import { syncQuotes, fillQuotes, MAX_PER_RUN } from "../lib/sync.js";
 import { parseAnswer, secondTechHours, toneOf } from "../lib/answer.js";
 import { crewCheckLine, FIELD_MAX, KEYWORDS } from "../lib/fieldline.js";
@@ -157,6 +157,10 @@ eq("waiting, any case", isWaiting({ status: { status: "Quote Ready" } }, waiting
 eq("not waiting", isWaiting({ status: { status: "invoiced" } }, waitingStatuses({})), false);
 eq("the !! flag is ignored", isWaiting({ status: { status: "waiting for approval" } }, waitingStatuses({})), true);
 eq("a misspelt status is not guessed", isWaiting({ status: { status: "quote read" } }, waitingStatuses({})), false);
+
+// a webhook call is checked whatever the status became: only the log line notes it
+eq("waiting: no note", statusNote({ status: { status: "quote ready" } }, waitingStatuses({})), null);
+eq("approved fast: checked, with a note", statusNote({ status: { status: "approved" } }, waitingStatuses({})), 'Status was already "approved" when the tool read it; checked anyway.');
 
 // the webhook log: what a call carried, read in every shape a sender may use
 eq("JSON body", readBody('{"payload":{"id":"17tvd0tb7ba"}}'), { payload: { id: "17tvd0tb7ba" } });

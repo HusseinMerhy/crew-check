@@ -372,14 +372,13 @@ A ClickUp Automation ("When status changes to quote ready / !! waiting for appro
 "Call webhook") POSTs the task to `/api/clickup/webhook?secret=<WEBHOOK_SECRET>`. The passcode lock
 passes that path on to the route, which checks the secret itself (same digest comparison) and
 refuses a wrong one with 401. The route answers 202 at once and, after the
-answer (`after()` from next/server), reads the task (GET), skips it if it is no longer waiting,
-and runs it through `syncQuotes` with a one-task list, so it shares the daily run's dedupe and
+answer (`after()` from next/server), reads the task (GET) and runs it through `syncQuotes` with a one-task list, so it shares the daily run's dedupe and
 storage. Nothing is written to ClickUp. The daily run stays as the safety net. Helpers:
 `lib/webhook.js`, tested in `tests/vol2.test.mjs`.
 
 Every call with the right secret is written to `webhook_log` (the newest 200 are kept) and the
 last 10 show in a folded "Webhook" card on `/queue`: when it came, the task, and what became of it
-("Checked", "Already checked, same quote", "Not waiting, skipped", "No Client Quote on the task",
+("Checked", "Already checked, same quote", "No Client Quote on the task",
 "No task in the call" with the body's field names, never its values, or "Failed" with the reason).
 A POST with a wrong or missing secret is logged as "Refused" (no body kept, at most one a minute,
 since anyone can send one), so an automation whose address lost its secret is visible; an address
@@ -388,6 +387,14 @@ webhook secret: it would answer 401 before the route could log anything.
 Before the log, a failure inside `after()` reached only the Vercel console. The body is read as
 JSON, or as a form body whose fields may hold JSON, and the task id is looked for under `task_id`,
 `payload` (object or JSON string), `payload.task`, `task`, `data` and `id`.
+
+There is no status gate in the route (since Nov 13): whatever ClickUp sends is checked, once per
+quote version. A quote can be approved within minutes (an NTE increase sent straight to the
+client), and until then a fast approval meant the version ClickUp sent was skipped as "not waiting"
+and never checked. Which tasks are sent is the automations' job: one on "status changes to quote
+ready" and one on "Client Quote changes", the second because an edit inside a waiting status is not
+a status change and would otherwise wait for the daily run. When the status has already moved on,
+the log says so in its detail.
 
 The task is read with `CLICKUP_API_TOKEN`, so the webhook can only check tasks that token's user
 can see. A task in someone's private or personal list fails with "ClickUp would not show this task
