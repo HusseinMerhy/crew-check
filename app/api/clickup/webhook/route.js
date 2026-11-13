@@ -15,7 +15,7 @@ import { getTask } from "../../../../lib/clickup";
 import { ensureTables, syncQuotes } from "../../../../lib/sync";
 import { fieldWriter } from "../../../../lib/fieldwrite";
 import { getSql } from "../../../../lib/db";
-import { finishCall, logCall, logRefused, outcomeOf, problemOf, readBody, shapeOf, statusNote, taskIdOf, waitingStatuses } from "../../../../lib/webhook";
+import { fieldDetail, finishCall, logCall, logRefused, outcomeOf, problemOf, readBody, shapeOf, statusNote, taskIdOf, waitingStatuses } from "../../../../lib/webhook";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
@@ -82,7 +82,7 @@ export async function POST(req) {
           method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quote: t.quote, state: t.state }),
         }))).json(),
       });
-      let detail = [moved, r.field_written ? "OSHA Check field written in ClickUp." : null].filter(Boolean).join(" ") || null;
+      let detail = [moved, fieldDetail(r)].filter(Boolean).join(" ") || null;
       if (r.failed) detail = (await quietly(() => sql.query(`select problem from auto_checks where task_id = $1`, [id])))?.[0]?.problem || null;
       await quietly(() => finishCall(sql, logId, { task_name: name, outcome: outcomeOf(r), detail }));
     } catch (e) {

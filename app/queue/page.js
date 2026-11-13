@@ -132,7 +132,11 @@ export default function Queue() {
       )}
       {data && !data.auto && <div className="attn"><b>Daily run is off.</b> Set CRON_SECRET in Vercel.</div>}
       {running && !running.busy && (running.ok
-        ? <div className="lint ok">Checked {running.checked} · failed {running.failed}{running.left_for_next_run ? " · more next run" : ""}</div>
+        ? <div className={`lint ${running.field_not_written ? "bad" : "ok"}`}>
+            Checked {running.checked} · failed {running.failed}{running.left_for_next_run ? " · more next run" : ""}
+            {running.field_written ? ` · OSHA Check written ${running.field_written}` : ""}
+            {running.field_not_written ? ` · OSHA Check not written ${running.field_not_written}: ${running.field_note}` : ""}
+          </div>
         : <div className="lint bad">{running.problem}</div>)}
       {data && !data.ok && <div className="lint bad">{data.problem}</div>}
 
