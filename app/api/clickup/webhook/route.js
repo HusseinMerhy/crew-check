@@ -14,7 +14,7 @@ import { POST as runCheck } from "../../check/route";
 import { getTask } from "../../../../lib/clickup";
 import { syncQuotes } from "../../../../lib/sync";
 import { getSql } from "../../../../lib/db";
-import { finishCall, isWaiting, logCall, logRefused, outcomeOf, problemOf, readBody, shapeOf, taskIdOf, waitingStatuses } from "../../../../lib/webhook";
+import { finishCall, logCall, logRefused, outcomeOf, problemOf, readBody, shapeOf, statusNote, taskIdOf, waitingStatuses } from "../../../../lib/webhook";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
@@ -67,11 +67,8 @@ export async function POST(req) {
     try {
       const task = await getTask({ token, id });
       name = task?.name || null;
-      const statuses = waitingStatuses();
-      if (!isWaiting(task, statuses)) {
-        await quietly(() => finishCall(sql, logId, { task_name: name, outcome: "Not waiting, skipped", detail: `Status is "${task?.status?.status || "none"}"; the check reads ${statuses.map((x) => `"${x}"`).join(", ")}.` }));
-        return;
-      }
+      // No status gate here: a quote approved within minutes is still checked (see statusNote).
+      const moved = statusNote(task, waitingStatuses());
       let history = null;
       try { history = process.env.ENTITY_HISTORY ? JSON.parse(process.env.ENTITY_HISTORY) : null; } catch { history = null; }
       await sql.query(`create table if not exists auto_checks (
@@ -88,7 +85,7 @@ export async function POST(req) {
           method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quote: t.quote, state: t.state }),
         }))).json(),
       });
-      let detail = null;
+      let detail = moved;
       if (r.failed) detail = (await quietly(() => sql.query(`select problem from auto_checks where task_id = $1`, [id])))?.[0]?.problem || null;
       await quietly(() => finishCall(sql, logId, { task_name: name, outcome: outcomeOf(r), detail }));
     } catch (e) {
