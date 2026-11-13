@@ -319,3 +319,7 @@ ol.why-list li::before{content:counter(w);width:24px;height:24px;border-radius:5
 .cu-field{border:1px dashed var(--line);border-radius:10px;padding:10px 14px;background:var(--inset)}
 .cu-field .lbl{font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)}
 .cu-field .v{font-size:15px;font-weight:600;color:var(--ink);margin:4px 0 2px}
+
+/* Clients page: a thin bar under the hours, so the biggest risks stand out without a chart */
+.hbar{height:4px;border-radius:2px;background:var(--line-2);margin-bottom:4px;min-width:60px}
+.hbar i{display:block;height:100%;border-radius:2px;background:var(--tape)}
