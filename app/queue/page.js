@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { parseAnswer, pointsOf, quoteSnippet, toneOf as tone, valueClass } from "../../lib/answer";
 import ReasonFinder from "../reason-finder";
+import { guideFor } from "../../lib/guide";
 
 // Same tones as the check page; the queue only needs the short class names.
 const CLS = { sig: "sig", warn: "warn", tape: "tape", ok: "ok", wait: "wait" };
@@ -227,6 +228,11 @@ export default function Queue() {
                       ? `Written to ClickUp ${when(sel.field_written_at)}.`
                       : sel.field_note || (data?.write?.on ? "Not written yet." : "Preview only: writing to ClickUp is off.")}
                   </div>
+                </div>
+              )}
+              {guideFor(sel.field) && (
+                <div className={`note ${guideFor(sel.field).tone === "tape" || guideFor(sel.field).tone === "warn" ? "warn" : ""}`}>
+                  <b>{guideFor(sel.field).decision}. Tell the dispatcher:</b> {guideFor(sel.field).tell}
                 </div>
               )}
               {sel.changed_since && <div className="lint warn">The quote in ClickUp changed after this check and has not been checked again yet.</div>}
