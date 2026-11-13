@@ -468,6 +468,11 @@ OSHA Check, and nothing here changes that.
   work order's stored verdict, POST checks a quote now (spends credit). The passcode lock lets the
   path through only with that Bearer key, and the route checks it again.
 - Tests: `tests/features.test.mjs` (in CI). Each guard was broken on purpose and a test failed.
+- `/guide` (`lib/guide.js`): the TL's decision and the words to tell the dispatcher for each field
+  keyword, also shown in the queue panel. A test fails if a keyword in `LINES` has no entry, so a
+  new verdict cannot reach ClickUp without its instruction. The live test on Nov 13 (mirror job,
+  "about 120 lb, one tech holds it level") went NO REASON to OK SAFETY in about 14 seconds from the
+  status change.
 
 ### Two subsets will fail, by design
 

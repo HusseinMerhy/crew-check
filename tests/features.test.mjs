@@ -9,6 +9,8 @@ import { obiRefusal, freshResult, storedResult } from "../lib/obi.js";
 import { readReason, reasonUser, REASON_SYSTEM } from "../lib/reason.js";
 import { clientPatterns, clientTotals } from "../lib/clients.js";
 import { taskFields } from "../lib/clickup.js";
+import { GUIDE, NOTES, guideFor } from "../lib/guide.js";
+import { crewCheckLine, KEYWORDS } from "../lib/fieldline.js";
 
 let pass = 0, fail = 0;
 const eq = (name, got, want) => {
@@ -185,6 +187,30 @@ eq("right key", obiRefusal("Bearer s3cret", "s3cret"), null);
   eq("per client: over NTE and overtime without a reason", [e.over_nte, e.ot, e.ot_no_reason], [1, 2, 1]);
   eq("per client: the work orders to look at, no amounts", e.others, [{ task_id: "a", task_name: "WO a", task_url: null, nte_pct: 130, ot: true }]);
   eq("totals add them up", [clientTotals(list).over_nte, clientTotals(list).ot_no_reason], [1, 1]);
+}
+
+// ---------- the field guide: every line the field can show has words for the dispatcher ----------
+{
+  eq("one guide entry per field keyword", GUIDE.map((g) => g.key).sort(), [...KEYWORDS].sort());
+  const sum = (o, sf, t) => `OSHA: ${o} | Safety: ${sf} | Two-person step: ${t}`;
+  const T2Q = "Tech reported: mirror\n4 hours labor Tech 1\n4 hours labor Tech 2";
+  const answers = {
+    "NO REASON": `This quote doesn't show a reason for a second tech.\n${sum("No", "No", "No")}`,
+    "ASK FIRST": `OSHA may require a second tech here, if there is hot work.\n${sum("Need whether there is hot work", "No", "No")}`,
+    "OSHA": `OSHA requires a second tech here.\n${sum("Yes", "No", "No")}`,
+    "OK SAFETY": `A second tech makes sense here for safety.\n${sum("No", "Yes, 120 lb stated", "No")}`,
+    "OK TWO-PERSON": `The second tech is justified: this job needs two pairs of hands.\n${sum("No", "No", "Yes")}`,
+  };
+  const got = Object.fromEntries(Object.entries(answers).map(([k, a]) => [k, guideFor(crewCheckLine(a, T2Q))?.key]));
+  eq("every line the check writes finds its guide entry", got, { "NO REASON": "NO REASON", "ASK FIRST": "ASK FIRST", "OSHA": "OSHA", "OK SAFETY": "OK SAFETY", "OK TWO-PERSON": "OK TWO-PERSON" });
+  eq("a one-tech quote finds its entry", guideFor(crewCheckLine(answers["NO REASON"], "Tech reported: mirror\n2 hours labor Tech 1"))?.decision, "Nothing to do");
+  eq("a phased line finds its entry", guideFor("NO REASON (Additional): remove Tech 2 or add a two-person step")?.decision, "Rejected");
+  eq("the live test's line", guideFor("OK SAFETY: Tech 2 OK for safety")?.decision, "Approved");
+  eq("no line, no entry", [guideFor(null), guideFor("SOMETHING: else")], [null, null]);
+  eq("decisions are the four agreed words", [...new Set(GUIDE.map((g) => g.decision))].sort(), ["Approved", "Nothing to do", "On hold", "Rejected"]);
+  const words = JSON.stringify([GUIDE, NOTES]);
+  eq("guide words: no em dash, no dollar amount", [words.includes("\u2014"), /\$\s?\d/.test(words)], [false, false]);
+  eq("every entry says what to tell the dispatcher", [...GUIDE, ...NOTES].every((g) => g.means && g.tell && g.tell.length < 400), true);
 }
 
 console.log(`${pass}/${pass + fail} passed`);
