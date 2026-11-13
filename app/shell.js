@@ -31,7 +31,7 @@ export default function Shell({ children }) {
           <span className="mark" aria-hidden="true">
             <svg viewBox="0 0 38 38"><rect width="38" height="38" rx="10" fill="var(--signal)" /><path d="M10 12 L19 27 L28 12" fill="none" stroke="var(--signal-ink)" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" /><circle cx="28" cy="12" r="3" fill="var(--tape)" /></svg>
           </span>
-          <span><b>Quote Auditor</b><span>Vista · Quoting</span></span>
+          <span><b>Quote Builder</b><span>Vista · Quoting</span></span>
         </a>
         <nav className="nav" onClick={() => setOpen(false)}>
           {NAV.map((n, i) => n.grp
@@ -46,7 +46,7 @@ export default function Shell({ children }) {
       <div className="main">
         <div className="topbar">
           <button className="btn ghost sm menu-btn" aria-label="Menu" onClick={() => setOpen(true)}>{ICONS.menu}</button>
-          <div className="crumb">Quote Auditor / <b>{here?.label || "Page"}</b></div>
+          <div className="crumb">Quote Builder / <b>{here?.label || "Page"}</b></div>
           <div className="sp" />
           <a className="engine" href="/queue"><span className="dot" /><span>Daily check · 11:00 UTC</span></a>
         </div>

@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Rules for working on Quote Auditor (named crew-check until Nov 12, 2026; older notes below still
+Rules for working on Quote Builder (named crew-check until Nov 13, 2026; older notes below still
 say crew-check). Read this before changing anything.
 
 ## The owner's rules

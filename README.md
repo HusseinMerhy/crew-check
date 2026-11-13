@@ -1,4 +1,4 @@
-# Quote Auditor (formerly Crew Check)
+# Quote Builder (formerly Crew Check)
 
 Paste a quote, pick the store's state, and the bot says whether a second tech is required by OSHA, justified for safety or practical reasons, or not shown, and which rule cards it used.
 

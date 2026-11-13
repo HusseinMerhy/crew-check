@@ -184,7 +184,7 @@ export default function EvalPage() {
     const blob = new Blob([JSON.stringify(runs.filter((r) => r.set === "cases").map((r) => r.result), null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `quote-auditor-eval-main-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `quote-builder-eval-main-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
   };
 
