@@ -3,7 +3,8 @@
 import { jobOf, lookup, lookupJob, historyLine, clientsOf, MIN_QUOTES } from "../lib/history.js";
 import { parseTaskRef, fieldText } from "../lib/clickup.js";
 import { taskIdOf, isWaiting, waitingStatuses, statusNote, readBody, shapeOf, problemOf, outcomeOf, logCall, finishCall, logRefused, REFUSED } from "../lib/webhook.js";
-import { syncQuotes, fillQuotes, MAX_PER_RUN } from "../lib/sync.js";
+import { syncQuotes, fillQuotes, MAX_PER_RUN, hashOf } from "../lib/sync.js";
+import { writeSettings, writeDecision, writeField } from "../lib/fieldwrite.js";
 import { parseAnswer, secondTechHours, toneOf } from "../lib/answer.js";
 import { crewCheckLine, FIELD_MAX, KEYWORDS } from "../lib/fieldline.js";
 
@@ -226,6 +227,66 @@ eq("outcome no quote", outcomeOf({ checked: 0, failed: 0, unchanged: 0, no_quote
   eq("same verdict, same words", crewCheckLine(`A second tech makes sense here for safety.\nText.\n${sum("No", "Yes, ladder in a busy aisle", "No")}`, T2), "OK SAFETY: Tech 2 OK for safety");
   eq("keyword first", KEYWORDS.some((k) => long.startsWith(k)), true);
   eq("not an answer", crewCheckLine("", T2), null);
+}
+
+// writing the OSHA Check field: off by default, one field, allowed lists only, never over a newer quote
+{
+  eq("writing is off by default", writeSettings({}).on, false);
+  eq("settings read", writeSettings({ CLICKUP_WRITE: "On", CLICKUP_WRITE_LISTS: "901, 902" }), { on: true, lists: ["901", "902"], fieldName: "OSHA Check", fieldId: null });
+  const S = writeSettings({ CLICKUP_WRITE: "on", CLICKUP_WRITE_LISTS: "901" });
+  const RED = "This quote doesn't show a reason for a second tech.\nOSHA: No | Safety: No | Two-person step: No";
+  const Q = "Tech reported: door drags\n4 hours labor Tech 1\n4 hours labor Tech 2";
+  const wo = (over = {}) => ({ id: "w1", name: "WO", list: { id: "901", name: "HECTOR" }, status: { status: "quote ready" }, custom_fields: [
+    { id: "f-q", name: "Client Quote", type: "text", value: over.quote ?? Q },
+    { id: "f-osha", name: "OSHA Check", type: "text", value: over.field },
+  ], ...(over.list ? { list: over.list } : {}) });
+  const H0 = hashOf({ state: "", quote: Q });
+  const line = "NO REASON: remove Tech 2 or add a two-person step";
+  eq("decision: write", writeDecision({ settings: S, task: wo(), checkedHash: H0, line, hashOf }), { write: true, fieldId: "f-osha" });
+  eq("decision: off", writeDecision({ settings: writeSettings({}), task: wo(), checkedHash: H0, line, hashOf }).write, false);
+  eq("decision: list not allowed", writeDecision({ settings: S, task: wo({ list: { id: "777", name: "Other" } }), checkedHash: H0, line, hashOf }).write, false);
+  eq("decision: all lists", writeDecision({ settings: writeSettings({ CLICKUP_WRITE: "on", CLICKUP_WRITE_LISTS: "all" }), task: wo({ list: { id: "777" } }), checkedHash: H0, line, hashOf }).write, true);
+  eq("decision: quote changed during the check", writeDecision({ settings: S, task: wo({ quote: Q + " edited" }), checkedHash: H0, line, hashOf }).write, false);
+  eq("decision: field already says it", writeDecision({ settings: S, task: wo({ field: line }), checkedHash: H0, line, hashOf }), { write: false, same: true, note: "The field already says this." });
+  const noField = wo(); noField.custom_fields = noField.custom_fields.slice(0, 1);
+  eq("decision: list without the field", writeDecision({ settings: S, task: noField, checkedHash: H0, line, hashOf }).write, false);
+
+  const calls = [];
+  const fetchImpl = async (url, init) => { calls.push([url, init.method, JSON.parse(init.body)]); return { ok: true }; };
+  let reads = 0;
+  const getTask = async () => { reads++; return wo(); };
+  let w = await writeField({ token: "t", taskId: "w1", listId: "901", answer: RED, quote: Q, checkedHash: H0, hashOf, getTask, settings: S, fetchImpl });
+  eq("writes the line to that one field", [w.written, calls], [true, [["https://api.clickup.com/api/v2/task/w1/field/f-osha", "POST", { value: line }]]]);
+  calls.length = 0; reads = 0;
+  w = await writeField({ token: "t", taskId: "w1", listId: "901", answer: RED, quote: Q, checkedHash: H0, hashOf, getTask, settings: writeSettings({}), fetchImpl });
+  eq("off: reads and writes nothing", [w.written, reads, calls.length], [false, 0, 0]);
+  w = await writeField({ token: "t", taskId: "w1", listId: "555", answer: RED, quote: Q, checkedHash: H0, hashOf, getTask, settings: S, fetchImpl });
+  eq("other list: reads and writes nothing", [w.written, reads, calls.length], [false, 0, 0]);
+  w = await writeField({ token: "t", taskId: "w1", listId: "901", answer: RED, quote: Q, checkedHash: "older", hashOf, getTask, settings: S, fetchImpl });
+  eq("newer quote in ClickUp: no write", [w.written, calls.length], [false, 0]);
+
+  // the sync loop calls the writer after a good check, and once for a quote checked before writing was on
+  const rows = new Map();
+  const db3 = { query: async (q, p) => {
+    if (q.startsWith("select")) { const r = rows.get(p[0]); return r ? [{ quote_hash: r.hash, job: "x", quote: "x", ok: r.ok, answer: r.answer, field_written_at: r.fw }] : []; }
+    if (q.startsWith("update auto_checks set field_written_at")) { rows.get(p[0]).fw = q.includes("now()") ? "now" : null; rows.get(p[0]).note = p[1]; return []; }
+    if (q.startsWith("insert")) { rows.set(p[0], { hash: p[7], ok: p[11], answer: p[9], fw: null }); return []; }
+    return [];
+  } };
+  const seenBy = [];
+  const writer = async (t, { answer }) => { seenBy.push([t.id, answer.slice(0, 10)]); return { written: true, note: null }; };
+  const one = async () => ({ tasks: [quoteTask("s1", hinge)], last: true });
+  out = await syncQuotes({ list: one, sql: db3, check: okCheck, history: null });
+  eq("checked quotes go through the writer", [seenBy.length, out.field_written, rows.get("s1").fw], [0, 0, null]);
+  out = await syncQuotes({ list: one, sql: db3, check: okCheck, history: null, afterCheck: writer });
+  eq("checked before writing was on: field filled from the stored answer, no new check", [seenBy, out.checked, out.field_written, rows.get("s1").fw], [[["s1", "The second"]], 0, 1, "now"]);
+  out = await syncQuotes({ list: one, sql: db3, check: okCheck, history: null, afterCheck: writer });
+  eq("already written: not written again", [seenBy.length, out.field_written], [1, 0]);
+  out = await syncQuotes({ list: async () => ({ tasks: [quoteTask("s2", hinge + " v2")], last: true }), sql: db3, check: async () => ({ ok: false, problem: "timeout" }), history: null, afterCheck: writer });
+  eq("a failed check writes nothing", seenBy.length, 1);
+  const failingWriter = async () => { throw new Error("ClickUp answered 401 to the field write"); };
+  out = await syncQuotes({ list: async () => ({ tasks: [quoteTask("s3", hinge + " v3")], last: true }), sql: db3, check: okCheck, history: null, afterCheck: failingWriter });
+  eq("a refused write is noted and retried later", [out.checked, rows.get("s3").fw, rows.get("s3").note], [1, null, "ClickUp answered 401 to the field write"]);
 }
 
 console.log(`${pass}/${pass + fail} passed`);

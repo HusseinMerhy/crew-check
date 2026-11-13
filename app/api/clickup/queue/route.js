@@ -6,14 +6,17 @@
 import { getSql } from "../../../../lib/db";
 import { historyLine } from "../../../../lib/history";
 import { getTask } from "../../../../lib/clickup";
-import { fillQuotes } from "../../../../lib/sync";
+import { ensureTables, fillQuotes } from "../../../../lib/sync";
+import { writeSettings } from "../../../../lib/fieldwrite";
 import { recentCalls } from "../../../../lib/webhook";
 import { crewCheckLine } from "../../../../lib/fieldline";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const sql = getSql();
-  const flags = { auto: !!process.env.CRON_SECRET, manual: !!process.env.SITE_PASSCODE, hook: !!process.env.WEBHOOK_SECRET };
+  const ws = writeSettings();
+  const flags = { auto: !!process.env.CRON_SECRET, manual: !!process.env.SITE_PASSCODE, hook: !!process.env.WEBHOOK_SECRET,
+    write: { on: ws.on, field: ws.fieldId || ws.fieldName, lists: ws.lists } };
   if (!sql) return Response.json({ ok: false, problem: "DATABASE_URL is not set in Vercel." });
   let history = null;
   try { history = process.env.ENTITY_HISTORY ? JSON.parse(process.env.ENTITY_HISTORY) : null; } catch { history = null; }
@@ -22,10 +25,10 @@ export async function GET() {
   let webhook = [];
   try { webhook = await recentCalls(sql, 10); } catch { webhook = []; }
   try {
-    await sql.query(`alter table auto_checks add column if not exists job text`);
-    await sql.query(`alter table auto_checks add column if not exists quote text`);
+    await ensureTables(sql);
     const rows = await sql.query(
-      `select task_id, task_name, task_url, status, entity, fm, state, headline, answer, history, job, quote, ok, problem, checked_at
+      `select task_id, task_name, task_url, status, entity, fm, state, headline, answer, history, job, quote, ok, problem, checked_at,
+         field_written_at, field_note
        from auto_checks order by checked_at desc limit 200`);
     const token = process.env.CLICKUP_API_TOKEN;
     if (token) await fillQuotes({ rows, sql, getTask: (id) => getTask({ token, id }) });
