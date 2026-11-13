@@ -202,7 +202,7 @@ export default function Queue() {
                 : <div className="small muted"><b>Quote:</b> {sel.quote == null ? "not loaded yet, refresh in a moment." : "this task has no Client Quote in ClickUp."}</div>}
               {sel.field && (
                 <div className="cu-field">
-                  <div className="lbl">ClickUp field preview: Crew check</div>
+                  <div className="lbl">ClickUp field preview: Quote Builder</div>
                   <div className="v">{sel.field}</div>
                   <div className="small muted">Not written to ClickUp. Writing needs the owner's OK.</div>
                 </div>
