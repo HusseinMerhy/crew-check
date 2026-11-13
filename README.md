@@ -101,6 +101,9 @@ See `.env.example` for the same list with notes and no values.
 | `CLICKUP_SYNC_STATUSES` | Config | Vol 2: which ClickUp statuses the daily check reads, comma separated. Unset means `quote ready,!! waiting for approval`. |
 
 | `WEBHOOK_SECRET` | Secret | Vol 2: turns on the ClickUp webhook (`/api/clickup/webhook`), which checks a quote the moment it reaches a waiting status. Any long random string; the same string goes at the end of the webhook address in the ClickUp Automation. Unset means the webhook is off. |
+| `CLICKUP_WRITE` | Plain | Vol 2: `on` lets the tool write its one line into the "OSHA Check" field in ClickUp after each check (`lib/fieldwrite.js`). Anything else, or unset, means nothing is written. Off by default. |
+| `CLICKUP_WRITE_LISTS` | Plain | Vol 2: the ClickUp list ids where that field may be written, comma separated, or `all`. Start with HECTOR: `901327439308`. |
+| `CLICKUP_FIELD_NAME` | Plain | Optional. The field's name, if it is not "OSHA Check". (`CLICKUP_FIELD_ID` instead pins one field id.) |
 
 After changing any setting: Deployments → **top row** → Redeploy. Never redeploy an older row (it puts old code live).
 

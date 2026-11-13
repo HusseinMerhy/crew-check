@@ -12,7 +12,8 @@ import { after } from "next/server";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { POST as runCheck } from "../../check/route";
 import { getTask } from "../../../../lib/clickup";
-import { syncQuotes } from "../../../../lib/sync";
+import { ensureTables, syncQuotes } from "../../../../lib/sync";
+import { fieldWriter } from "../../../../lib/fieldwrite";
 import { getSql } from "../../../../lib/db";
 import { finishCall, logCall, logRefused, outcomeOf, problemOf, readBody, shapeOf, statusNote, taskIdOf, waitingStatuses } from "../../../../lib/webhook";
 export const dynamic = "force-dynamic";
@@ -71,21 +72,17 @@ export async function POST(req) {
       const moved = statusNote(task, waitingStatuses());
       let history = null;
       try { history = process.env.ENTITY_HISTORY ? JSON.parse(process.env.ENTITY_HISTORY) : null; } catch { history = null; }
-      await sql.query(`create table if not exists auto_checks (
-        task_id text primary key, task_name text, task_url text, status text, entity text, fm text, state text,
-        quote_hash text, headline text, answer text, history text, ok boolean, problem text, checked_at timestamptz default now())`);
-      await sql.query(`alter table auto_checks add column if not exists job text`);
-      await sql.query(`alter table auto_checks add column if not exists quote text`);
+      await ensureTables(sql);
       // The same loop as the daily run, given just this one task: it skips a quote already
       // checked with the same text and stores the answer for the queue.
       const r = await syncQuotes({
         list: async () => ({ tasks: [task], last: true }),
-        sql, history,
+        sql, history, afterCheck: fieldWriter({ token }),
         check: async (t) => (await runCheck(new Request("http://internal/api/check", {
           method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quote: t.quote, state: t.state }),
         }))).json(),
       });
-      let detail = moved;
+      let detail = [moved, r.field_written ? "OSHA Check field written in ClickUp." : null].filter(Boolean).join(" ") || null;
       if (r.failed) detail = (await quietly(() => sql.query(`select problem from auto_checks where task_id = $1`, [id])))?.[0]?.problem || null;
       await quietly(() => finishCall(sql, logId, { task_name: name, outcome: outcomeOf(r), detail }));
     } catch (e) {

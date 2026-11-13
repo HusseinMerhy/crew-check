@@ -1,6 +1,7 @@
 "use client";
 // Vol 2: the daily automatic check's results. Each ClickUp quote waiting for approval is checked
-// once a day (and again if its quote text changes). Read only: nothing here writes to ClickUp.
+// once a day (and again if its quote text changes). Nothing here writes to ClickUp; the OSHA Check
+// field is written by the check itself when switched on (lib/fieldwrite.js).
 import { useEffect, useMemo, useState } from "react";
 import { parseAnswer, pointsOf, quoteSnippet, toneOf as tone, valueClass } from "../../lib/answer";
 
@@ -201,10 +202,14 @@ export default function Queue() {
                   </details>
                 : <div className="small muted"><b>Quote:</b> {sel.quote == null ? "not loaded yet, refresh in a moment." : "this task has no Client Quote in ClickUp."}</div>}
               {sel.field && (
-                <div className="cu-field">
-                  <div className="lbl">ClickUp field preview: Quote Builder</div>
+                <div className={`cu-field${sel.field_written_at ? " done" : ""}`}>
+                  <div className="lbl">ClickUp field: {data?.write?.field || "OSHA Check"}</div>
                   <div className="v">{sel.field}</div>
-                  <div className="small muted">Not written to ClickUp. Writing needs the owner's OK.</div>
+                  <div className="small muted">
+                    {sel.field_written_at
+                      ? `Written to ClickUp ${when(sel.field_written_at)}.`
+                      : sel.field_note || (data?.write?.on ? "Not written yet." : "Preview only: writing to ClickUp is off.")}
+                  </div>
                 </div>
               )}
               {sel.ok
