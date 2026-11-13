@@ -41,7 +41,7 @@ export default function Shell({ children }) {
             : <a key={n.href} href={n.href} className={here === n ? "on" : ""}>{ICONS[n.icon]}{n.label}</a>)}
         </nav>
         <div className="rail-foot">
-          <b>Read only on ClickUp</b>
+          <b>ClickUp: reads quotes, writes only OSHA Check</b>
         </div>
       </aside>
       <div className={`scrim${open ? " show" : ""}`} onClick={() => setOpen(false)} />

@@ -26,7 +26,7 @@ A round is finished only when all four of these hold:
 
 - Never edit expected answers in `evals/`.
 - Never read `evals/holdout.jsonl` while improving. It is read by the runner, not by you.
-- Never touch ClickUp. It is read-only, and nothing here writes to it.
+- Never touch ClickUp beyond reading, with one exception the owner approved on Nov 13, 2026: the tool may write the "OSHA Check" text field on a work order, and nothing else, only while CLICKUP_WRITE=on and only on the lists in CLICKUP_WRITE_LISTS.
 - Keys live in environment variables only. Never in a file, never in a commit.
 
 ### How to report
@@ -374,7 +374,7 @@ A ClickUp Automation ("When status changes to quote ready / !! waiting for appro
 passes that path on to the route, which checks the secret itself (same digest comparison) and
 refuses a wrong one with 401. The route answers 202 at once and, after the
 answer (`after()` from next/server), reads the task (GET) and runs it through `syncQuotes` with a one-task list, so it shares the daily run's dedupe and
-storage. Nothing is written to ClickUp. The daily run stays as the safety net. Helpers:
+storage. The only write is the OSHA Check field (below). The daily run stays as the safety net. Helpers:
 `lib/webhook.js`, tested in `tests/vol2.test.mjs`.
 
 Every call with the right secret is written to `webhook_log` (the newest 200 are kept) and the
@@ -402,9 +402,9 @@ can see. A task in someone's private or personal list fails with "ClickUp would 
 to the tool". The Nov 5 test task (Personal List, hidden folder) is the likely case: the manual run
 at 15:20 UTC also passed it over. Test in a list the token can see.
 
-### Vol 2 ClickUp field preview (`lib/fieldline.js`)
+### Vol 2 ClickUp field: OSHA Check (`lib/fieldline.js`, `lib/fieldwrite.js`)
 
-The "Crew check" field agreed with the dispatch side is one strict line: a fixed keyword, then a
+The "OSHA Check" field (first called "Crew check") agreed with the dispatch side is one strict line: a fixed keyword, then a
 fixed action (`NO REASON: remove Tech 2 or add a two-person step`, `OSHA: Tech 2 required by
 OSHA`, `OK SAFETY: Tech 2 OK for safety`, `OK TWO-PERSON: Tech 2 OK, a step needs two people`,
 plus a proposed `ONE TECH: no Tech 2 on this quote`). Only `ASK FIRST` carries words from the
@@ -412,9 +412,23 @@ answer: the one fact to confirm. At most 70 characters, no dollar amounts, no cl
 Hector asked for the text to be strict and straightforward, with no coloured dots (Nov 12), so
 the same verdict always reads the same in plain text; the reasons stay in the tool.
 `crewCheckLine(answer, quote)` builds it from a stored answer, and `/queue` shows it in each work
-order's drawer as a dashed "ClickUp field preview" box. **It is not written to ClickUp.** The
-owner's rule keeps ClickUp read-only; writing it needs his written OK, then a field ID, a token with
-write access and an on/off switch.
+order's drawer, with whether it was written and, if not, why.
+
+Since Nov 13 it is written to the "OSHA Check" text field in ClickUp (`lib/fieldwrite.js`), the one
+write in the project, approved by the owner that day (ClickUp edit access came from Faysal). It
+writes only when all of these hold, each tested in `tests/vol2.test.mjs` and checked by breaking it:
+
+- `CLICKUP_WRITE=on` in Vercel (off by default: no extra read, no write);
+- the work order's list id is in `CLICKUP_WRITE_LISTS` (comma separated, or `all`). Switched on
+  Nov 13 for HECTOR only (`901327439308`);
+- the list has the field (`CLICKUP_FIELD_NAME`, default "OSHA Check", or `CLICKUP_FIELD_ID`);
+- a fresh read of the task shows the same quote and state that were checked; an edit during the
+  check means nothing is written and the newer check writes;
+- the field does not already say the same thing.
+
+It runs after every good check (webhook and daily run), and once for quotes checked before writing
+was switched on, from the stored answer with no new check. A refused write is stored in
+`field_note`, shown in the drawer, and retried on the next run.
 
 A phased quote gets one verdict per phase, read from each `OSHA: ... | Safety: ... | Two-person
 step: ...` line rather than from headlines, because the skill sometimes writes a later phase's
